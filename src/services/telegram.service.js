@@ -131,12 +131,13 @@ class TelegramService {
         const welcomeText = 
           `👋 Привет! Я бот автоматических отчетов продаж.\n\n` +
           `Я настроен присылать ежедневный отчет в 21:00.\n` +
-          `Но вы можете запросить актуальный отчет на данный момент в любое время с помощью кнопки ниже! 👇`;
+          `Но вы можете запросить показатели на данный момент в любое время с помощью кнопок меню! 👇`;
         
-        // Define a native Reply Keyboard with the report request button
+        // Define a native Reply Keyboard with two buttons
         const replyMarkup = {
           keyboard: [
-            [{ text: '📊 Получить актуальный отчет' }]
+            [{ text: '📊 Получить актуальный отчет' }],
+            [{ text: '💰 Валовая прибыль за сегодня' }]
           ],
           resize_keyboard: true,
           one_time_keyboard: false
@@ -147,12 +148,12 @@ class TelegramService {
         return;
       }
 
-      // 2. Command: /report or interactive button press "📊 Получить актуальный отчет"
+      // 2. Command: /report or button "📊 Получить актуальный отчет"
       if (normalizedText === '/report' || normalizedText === '📊 получить актуальный отчет' || normalizedText.includes('получить отчет')) {
         logger.info(`User ${chatId} requested an instant report.`);
         
         // Send a temporary "loading" notice
-        const loadingMessage = await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблицам и формирую актуальный отчет...');
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблицам и формирую актуальный отчет...');
         
         try {
           // Dynamic import to avoid CommonJS circular dependencies
@@ -175,10 +176,40 @@ class TelegramService {
         return;
       }
 
-      // 3. Fallback for other text inputs
+      // 3. Command: /profit or button "💰 Валовая прибыль за сегодня"
+      if (normalizedText === '/profit' || normalizedText === '💰 валовая прибыль за сегодня' || normalizedText.includes('валовая прибыль')) {
+        logger.info(`User ${chatId} requested instant gross profit totals.`);
+
+        // Send a temporary "loading" notice
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблицам и рассчитываю прибыль...');
+
+        try {
+          // Dynamic import to avoid CommonJS circular dependencies
+          const reportService = require('./report.service');
+          
+          // Generate profit summary text string directly
+          const profitText = await reportService.getGrossProfitText();
+          
+          // Send profit summary directly back to the requesting user
+          await this.sendMessage(chatId, profitText);
+          logger.info(`Gross profit response successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate profit response: ${innerError.message}`);
+          await this.sendMessage(
+            chatId, 
+            `⚠️ Ошибка при расчете прибыли:\n${innerError.message}\n\n` +
+            `Пожалуйста, убедитесь, что Google Apps Script Web App опубликован и доступен по адресу APPS_SCRIPT_URL.`
+          );
+        }
+        return;
+      }
+
+      // 4. Fallback for other text inputs
       const fallbackText = 
         `💡 Я понимаю только специальные команды.\n\n` +
-        `Используйте кнопку **📊 Получить актуальный отчет** или команду /report, чтобы запустить формирование отчета.`;
+        `Используйте кнопки меню:\n` +
+        `• **📊 Получить актуальный отчет**\n` +
+        `• **💰 Валовая прибыль за сегодня**`;
       
       await this.sendMessage(chatId, fallbackText);
     } catch (err) {

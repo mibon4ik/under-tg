@@ -67,6 +67,49 @@ class ReportService {
   }
 
   /**
+   * Fetches data and constructs a compact financial summary of gross profit.
+   * Calculates active sales (renewals) and cancellations separately and provides total daily progress.
+   * @param {string} [targetDateStr] - Format "dd.MM.yyyy"
+   * @returns {Promise<string>} Fully formatted gross profit message.
+   */
+  async getGrossProfitText(targetDateStr = null) {
+    const dateToProcess = targetDateStr || formatter.formatDate(new Date());
+    const rawData = await sheetsService.fetchSheetsData(dateToProcess);
+    const reportData = this.aggregateData(rawData, dateToProcess);
+
+    // Calculate renewals totals (everything except 'Отмены')
+    let renewalsGross = 0;
+    let renewalsSales = 0;
+
+    for (const catName in reportData.categories) {
+      if (catName !== 'Отмены') {
+        renewalsGross += reportData.categories[catName].gross;
+        renewalsSales += reportData.categories[catName].sales;
+      }
+    }
+
+    const cancellations = reportData.categories['Отмены'] || { gross: 0, sales: 0 };
+    const cancellationsGross = cancellations.gross;
+    const cancellationsSales = cancellations.sales;
+
+    let msg = `💰 ВАЛОВАЯ ПРИБЫЛЬ ЗА СЕГОДНЯ\n\n`;
+    msg += `Дата: ${dateToProcess}\n\n`;
+    msg += `📈 Продления (активные продажи):\n`;
+    msg += `• Вал: ${formatter.formatCurrency(renewalsGross)}\n`;
+    msg += `• Закрыто сделок: ${renewalsSales}\n\n`;
+    msg += `📉 Отмены (возвраты):\n`;
+    msg += `• Вал: ${formatter.formatCurrency(cancellationsGross)}\n`;
+    msg += `• Закрыто сделок: ${cancellationsSales}\n\n`;
+    msg += `━━━━━━━━━━━━━━\n\n`;
+    msg += `🏆 ОБЩИЙ ИТОГ ЗА СЕГОДНЯ:\n`;
+    msg += `• Общий вал: ${formatter.formatCurrency(reportData.totalGross)}\n`;
+    msg += `• Всего сделок: ${reportData.totalSalesCount}\n\n`;
+    msg += `Отчет сформирован автоматически`;
+
+    return msg;
+  }
+
+  /**
    * Aggregates raw sheets data.
    * @param {Object} rawData - Map of sheetName -> rows
    * @param {string} dateToProcess - Format "dd.MM.yyyy"
