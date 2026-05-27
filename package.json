@@ -1,0 +1,25 @@
+{
+  "name": "tg-sales-reporter",
+  "version": "1.0.0",
+  "description": "Automatic Telegram Sales Report via Google Sheets",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "keywords": [
+    "telegram",
+    "google-sheets",
+    "bot",
+    "report",
+    "sales"
+  ],
+  "author": "Antigravity",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^137.0.0",
+    "node-cron": "^3.0.3"
+  }
+}
