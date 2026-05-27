@@ -3,11 +3,11 @@ const config = require('../config/config');
 const logger = require('../utils/logger');
 
 /**
- * Service to handle sending notifications via Telegram Bot API.
+ * Service to handle sending notifications and listening to interactive commands via Telegram Bot API.
  */
 class TelegramService {
   /**
-   * Sends a text message to all configured chat IDs.
+   * Sends a text message to all globally configured chat IDs.
    * Runs in parallel/sequence and continues even if one chat ID fails.
    * @param {string} text - The message text to send.
    * @returns {Promise<Object>} Summary of sending results.
@@ -31,26 +31,159 @@ class TelegramService {
 
     for (const chatId of chatIds) {
       try {
-        const url = `https://api.telegram.org/bot${token}/sendMessage`;
-        await axios.post(url, {
-          chat_id: chatId,
-          text: text,
-          // Use standard markdown if formatting matches, but raw plain text works best
-          // for the requested design to avoid parsing issues with special symbols like ₸.
-        });
+        await this.sendMessage(chatId, text);
         logger.info(`Successfully sent report to chat ID: ${chatId}`);
         results.success.push(chatId);
       } catch (error) {
-        let errMsg = error.message;
-        if (error.response && error.response.data) {
-          errMsg = JSON.stringify(error.response.data);
-        }
-        logger.error(`Failed to send report to chat ID ${chatId}: ${errMsg}`);
-        results.failed.push({ chatId, error: errMsg });
+        logger.error(`Failed to send report to chat ID ${chatId}: ${error.message}`);
+        results.failed.push({ chatId, error: error.message });
       }
     }
 
     return results;
+  }
+
+  /**
+   * Sends a single text message to a specific chat ID with optional custom keyboards.
+   * @param {string|number} chatId - Target chat/user ID.
+   * @param {string} text - Message text content.
+   * @param {Object} [replyMarkup] - Optional Telegram Reply Markup object.
+   * @returns {Promise<Object>} Telegram API response data.
+   */
+  async sendMessage(chatId, text, replyMarkup = null) {
+    const token = config.TELEGRAM.BOT_TOKEN;
+    if (!token) throw new Error('Telegram token not configured');
+
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    const payload = {
+      chat_id: chatId,
+      text: text
+    };
+
+    if (replyMarkup) {
+      payload.reply_markup = replyMarkup;
+    }
+
+    const response = await axios.post(url, payload);
+    return response.data;
+  }
+
+  /**
+   * Starts the background Telegram Bot Update listener loop using Long Polling.
+   * Works anywhere (local PC, cloud Railway) instantly without Webhook or SSL configurations.
+   */
+  startPolling() {
+    const token = config.TELEGRAM.BOT_TOKEN;
+    if (!token) {
+      logger.warn('Telegram bot token (BOT_TOKEN) is missing. Interactive bot listener is disabled.');
+      return;
+    }
+
+    logger.info('Initializing interactive Telegram Bot listener (long polling)...');
+    let offset = 0;
+
+    // Run polling in an independent background loop
+    (async () => {
+      while (true) {
+        try {
+          const url = `https://api.telegram.org/bot${token}/getUpdates`;
+          const response = await axios.get(url, {
+            params: {
+              offset: offset,
+              timeout: 25, // 25s long polling timeout
+            },
+            timeout: 30000 // 30s connection timeout
+          });
+
+          const updates = response.data.result || [];
+          for (const update of updates) {
+            offset = update.update_id + 1;
+            await this.handleUpdate(update);
+          }
+        } catch (error) {
+          logger.error(`Error in Telegram polling listener: ${error.message}`);
+          // Wait 5 seconds before retrying on network drops to prevent spamming
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+    })();
+  }
+
+  /**
+   * Processes an incoming Telegram update.
+   * @param {Object} update - Raw update object from Telegram API.
+   */
+  async handleUpdate(update) {
+    if (!update || !update.message) return;
+
+    const message = update.message;
+    const chatId = message.chat.id;
+    const textRaw = message.text || '';
+    const text = textRaw.trim();
+
+    if (!text) return;
+
+    const normalizedText = text.toLowerCase();
+    
+    try {
+      // 1. Command: /start
+      if (normalizedText === '/start') {
+        const welcomeText = 
+          `👋 Привет! Я бот автоматических отчетов продаж.\n\n` +
+          `Я настроен присылать ежедневный отчет в 21:00.\n` +
+          `Но вы можете запросить актуальный отчет на данный момент в любое время с помощью кнопки ниже! 👇`;
+        
+        // Define a native Reply Keyboard with the report request button
+        const replyMarkup = {
+          keyboard: [
+            [{ text: '📊 Получить актуальный отчет' }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: false
+        };
+
+        await this.sendMessage(chatId, welcomeText, replyMarkup);
+        logger.info(`Welcomed user ${chatId} in private chat.`);
+        return;
+      }
+
+      // 2. Command: /report or interactive button press "📊 Получить актуальный отчет"
+      if (normalizedText === '/report' || normalizedText === '📊 получить актуальный отчет' || normalizedText.includes('получить отчет')) {
+        logger.info(`User ${chatId} requested an instant report.`);
+        
+        // Send a temporary "loading" notice
+        const loadingMessage = await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблицам и формирую актуальный отчет...');
+        
+        try {
+          // Dynamic import to avoid CommonJS circular dependencies
+          const reportService = require('./report.service');
+          
+          // Generate report text string directly
+          const reportText = await reportService.getReportText();
+          
+          // Send report text directly back to the requesting user/chat ID
+          await this.sendMessage(chatId, reportText);
+          logger.info(`Direct sales report successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate direct report response: ${innerError.message}`);
+          await this.sendMessage(
+            chatId, 
+            `⚠️ Ошибка при формировании отчета:\n${innerError.message}\n\n` +
+            `Пожалуйста, убедитесь, что Google Apps Script Web App опубликован и доступен по адресу APPS_SCRIPT_URL.`
+          );
+        }
+        return;
+      }
+
+      // 3. Fallback for other text inputs
+      const fallbackText = 
+        `💡 Я понимаю только специальные команды.\n\n` +
+        `Используйте кнопку **📊 Получить актуальный отчет** или команду /report, чтобы запустить формирование отчета.`;
+      
+      await this.sendMessage(chatId, fallbackText);
+    } catch (err) {
+      logger.error(`Failed to handle Telegram update from chat ID ${chatId}: ${err.message}`);
+    }
   }
 }
 

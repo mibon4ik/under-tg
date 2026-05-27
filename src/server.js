@@ -1,6 +1,7 @@
 const app = require('./app');
 const config = require('./config/config');
 const schedulerService = require('./services/scheduler.service');
+const telegramService = require('./services/telegram.service');
 const logger = require('./utils/logger');
 
 // Retrieve Port Configuration
@@ -16,6 +17,14 @@ const server = app.listen(PORT, () => {
     logger.info('Daily sales report scheduler is active.');
   } catch (error) {
     logger.error(`Critical error starting daily report scheduler: ${error.message}`);
+  }
+
+  // Start Background Telegram Update Listener (Long Polling)
+  try {
+    telegramService.startPolling();
+    logger.info('Interactive Telegram Bot update listener is active.');
+  } catch (error) {
+    logger.error(`Critical error starting Telegram Bot update listener: ${error.message}`);
   }
 });
 

@@ -54,6 +54,19 @@ class ReportService {
   }
 
   /**
+   * Fetches data and constructs the report text only (without global broadcasts).
+   * Perfect for direct interactive Telegram bot replies.
+   * @param {string} [targetDateStr] - Format "dd.MM.yyyy"
+   * @returns {Promise<string>} Fully formatted report message.
+   */
+  async getReportText(targetDateStr = null) {
+    const dateToProcess = targetDateStr || formatter.formatDate(new Date());
+    const rawData = await sheetsService.fetchSheetsData(dateToProcess);
+    const reportData = this.aggregateData(rawData, dateToProcess);
+    return this.buildReportMessage(reportData, dateToProcess);
+  }
+
+  /**
    * Aggregates raw sheets data.
    * @param {Object} rawData - Map of sheetName -> rows
    * @param {string} dateToProcess - Format "dd.MM.yyyy"
