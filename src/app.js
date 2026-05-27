@@ -1,6 +1,7 @@
 const express = require('express');
 const reportService = require('./services/report.service');
 const logger = require('./utils/logger');
+const telegramService = require('./services/telegram.service');
 
 const app = express();
 
@@ -56,6 +57,23 @@ app.post('/send-report', async (req, res) => {
       success: false,
       error: err.message
     });
+  }
+});
+
+/**
+ * Telegram Webhook endpoint for forwarded updates from NestJS
+ * POST /telegram/webhook
+ */
+app.post('/telegram/webhook', async (req, res) => {
+  try {
+    const update = req.body;
+    if (update) {
+      await telegramService.handleUpdate(update);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Error handling forwarded Telegram update:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -18,6 +18,7 @@ module.exports = {
   TELEGRAM: {
     BOT_TOKEN: process.env.BOT_TOKEN || '',
     CHAT_IDS: parseChatIds(process.env.CHAT_ID || ''),
+    MODE: process.env.TELEGRAM_MODE || 'webhook',
   },
   APPS_SCRIPT_URL: process.env.APPS_SCRIPT_URL || '',
 };

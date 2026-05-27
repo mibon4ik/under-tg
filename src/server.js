@@ -19,12 +19,16 @@ const server = app.listen(PORT, () => {
     logger.error(`Critical error starting daily report scheduler: ${error.message}`);
   }
 
-  // Start Background Telegram Update Listener (Long Polling)
-  try {
-    telegramService.startPolling();
-    logger.info('Interactive Telegram Bot update listener is active.');
-  } catch (error) {
-    logger.error(`Critical error starting Telegram Bot update listener: ${error.message}`);
+  // Start Background Telegram Update Listener (Long Polling if configured)
+  if (config.TELEGRAM.MODE === 'polling') {
+    try {
+      telegramService.startPolling();
+      logger.info('Interactive Telegram Bot update listener is active (polling mode).');
+    } catch (error) {
+      logger.error(`Critical error starting Telegram Bot update listener: ${error.message}`);
+    }
+  } else {
+    logger.info('Interactive Telegram Bot update listener is active (webhook mode).');
   }
 });
 
