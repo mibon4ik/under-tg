@@ -1,25 +1,113 @@
 /**
  * Google Apps Script версия для автоматического Telegram-отчета продаж
  * 
- * ИНСТРУКЦИЯ ПО УСТАНОВКЕ:
+ * Данный скрипт решает 2 задачи:
+ * 1. Работает как API Web App (для Node.js бэкенда на Railway). Возвращает все строки 
+ *    из листов "Продления" и "Отмены" по запросу бэкенда без использования Google API ключей и Service Accounts.
+ * 2. Может работать автономно (по триггеру внутри таблиц), если вы не хотите использовать внешний сервер Railway.
+ * 
+ * ИНСТРУКЦИЯ ПО РАЗВЕРТЫВАНИЮ WEB APP API:
  * 1. В вашей Google Таблице выберите "Расширения" -> "Apps Script" (Extensions -> Apps Script).
  * 2. Удалите стандартный шаблон кода и вставьте содержимое этого файла.
- * 3. На панели слева выберите "Настройки проекта" (Project Settings, иконка шестеренки).
- * 4. В разделе "Свойства сценария" (Script Properties) добавьте следующие свойства:
- *    - BOT_TOKEN : Токен вашего Telegram бота (например: 7123456789:ABCdefGh...)
- *    - CHAT_ID   : ID чатов получателей через запятую (например: -1001234567890,987654321)
- *    - TIMEZONE  : Часовой пояс (по умолчанию: Asia/Almaty)
- * 5. Нажмите кнопку "Сохранить" (Save, иконка дискеты).
- * 6. Для автоматизации: перейдите в раздел "Триггеры" (Triggers, иконка часов на панели слева):
- *    - Нажмите "Добавить триггер" (Add Trigger).
- *    - Выберите функцию для запуска: "dailySalesReportFlow".
- *    - Источник мероприятия: "По времени" (Time-driven).
- *    - Тип триггера по времени: "По дням" (Day timer).
- *    - Время суток: "с 21:00 до 22:00" (9pm to 10pm).
- *    - Нажмите "Сохранить".
+ * 3. Нажмите кнопку "Сохранить" (Save, иконка дискеты).
+ * 4. Нажмите синюю кнопку "Начало развертывания" -> "Новое развертывание" (Deploy -> New Deployment).
+ * 5. Выберите тип развертывания: "Веб-приложение" (Web App, иконка шестеренки).
+ * 6. Настройте конфигурацию:
+ *    - Описание: "under-tg-sales-api"
+ *    - Запуск от имени: "Вы" (Me, ваш аккаунт)
+ *    - Кто имеет доступ: "Все" (Anyone - это критически важно для доступа с Railway!)
+ * 7. Нажмите кнопку "Развернуть" (Deploy). 
+ * 8. Предоставьте разрешения скрипту (Authorize access), выберите ваш Google-аккаунт, нажмите Advanced -> Go to ... (unsafe) и подтвердите разрешения.
+ * 9. Скопируйте полученный **URL веб-приложения** (URL Web App, оканчивающийся на `/exec`).
+ * 10. Вставьте этот URL в настройки проекта на Railway (переменная `APPS_SCRIPT_URL` в `.env`).
+ * 
+ * ИНСТРУКЦИЯ ДЛЯ АВТОНОМНОГО ЗАПУСКА ВНУТРИ ТАБЛИЦ (БЕЗ RAILWAY):
+ * Если хотите использовать чисто Apps Script:
+ * 1. Перейдите в "Настройки проекта" (иконка шестеренки слева) -> "Свойства сценария" (Script Properties) и добавьте:
+ *    - `BOT_TOKEN` : токен вашего Telegram-бота.
+ *    - `CHAT_ID`   : ID чатов через запятую.
+ *    - `TIMEZONE`  : часовой пояс (например, Asia/Almaty).
+ * 2. Перейдите во вкладку "Триггеры" (иконка часов) -> "Добавить триггер":
+ *    - Запускаемая функция: `dailySalesReportFlow`
+ *    - Источник: по времени
+ *    - Тип: по дням
+ *    - Время суток: с 21:00 до 22:00.
  */
 
-// Динамическое считывание листов на основе месяца даты отчета (например, "Общие продажи Май (Продления)")
+/**
+ * -----------------------------------------------------------------------------
+ *  1. WEB APP ENDPOINT (doGet)
+ *  Exposes spreadsheet data as JSON for the Node.js Railway backend
+ * -----------------------------------------------------------------------------
+ */
+function doGet(e) {
+  try {
+    var p = e && e.parameter ? e.parameter : {};
+    var date = p.date || '';
+    
+    var months = {
+      '01': 'Январь', '02': 'Февраль', '03': 'Март', '04': 'Апрель',
+      '05': 'Май', '06': 'Июнь', '07': 'Июль', '08': 'Август',
+      '09': 'Сентябрь', '10': 'Октябрь', '11': 'Ноябрь', '12': 'Декабрь'
+    };
+    
+    // Если дата не передана, берем текущую дату по времени Almaty
+    var targetDate = date || Utilities.formatDate(new Date(), 'Asia/Almaty', 'dd.MM.yyyy');
+    var parts = targetDate.split('.');
+    var monthIndex = parts[1] || '05';
+    var monthName = months[monthIndex] || 'Май';
+    
+    // Динамически вычисляем имена необходимых листов
+    var resolvedSheetsList = [
+      'Общие продажи ' + monthName + ' (Продления)',
+      'Общие продажи ' + monthName + ' (Отмены)'
+    ];
+    
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return crmJson_({ ok: false, error: 'spreadsheet_not_found' });
+    }
+    
+    var result = {};
+    
+    resolvedSheetsList.forEach(function(sheetName) {
+      var sh = ss.getSheetByName(sheetName);
+      if (sh) {
+        var range = sh.getDataRange();
+        result[sheetName] = range ? range.getDisplayValues() : [];
+      } else {
+        result[sheetName] = [];
+      }
+    });
+    
+    return crmJson_({
+      ok: true,
+      date: targetDate,
+      data: result
+    });
+  } catch (err) {
+    return crmJson_({
+      ok: false,
+      error: String(err && err.message ? err.message : err)
+    });
+  }
+}
+
+/**
+ * Вспомогательный метод для выгрузки JSON-ответа
+ */
+function crmJson_(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ *  2. AUTONOMOUS RUNNING LOGIC
+ *  Runs locally in Google Spreadsheet using native time triggers
+ * -----------------------------------------------------------------------------
+ */
 
 /**
  * Основная функция-триггер для ежедневного автоматического отчета.
@@ -117,6 +205,7 @@ function aggregateSalesData(spreadsheet, targetDateStr) {
     if (values.length <= 1) return; // Пустой лист или только шапка
 
     let sheetHasDataForDay = false;
+    const normalizedSheetName = sheetName.toLowerCase();
 
     // Цикл по всем строкам (пропускаем заголовок i = 0)
     for (let i = 1; i < values.length; i++) {
@@ -156,7 +245,6 @@ function aggregateSalesData(spreadsheet, targetDateStr) {
 
       // Определяем категорию на основе имени листа и источника лида
       let categoryKey = null;
-      const normalizedSheetName = sheetName.toLowerCase();
 
       if (normalizedSheetName.indexOf('отмен') !== -1) {
         // Правило: Все строки на листе Отмены относятся к категории Отмены
