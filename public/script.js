@@ -1,4 +1,10 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const loginOverlay = document.getElementById('loginOverlay');
+  const loginForm = document.getElementById('loginForm');
+  const loginPasswordInput = document.getElementById('loginPassword');
+  const btnLogin = document.getElementById('btnLogin');
+  
+  const mainContent = document.getElementById('mainContent');
   const apiUrlInput = document.getElementById('apiUrl');
   const settingsForm = document.getElementById('settingsForm');
   
@@ -7,6 +13,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const appsScriptUrlInput = document.getElementById('appsScriptUrl');
   const appsScriptUrlOp1Input = document.getElementById('appsScriptUrlOp1');
   const timezoneInput = document.getElementById('timezone');
+  const dashboardPasswordInput = document.getElementById('dashboardPassword');
+  
+  // Dynamic Sheet Dropdowns
+  const btnFetchSheetsMain = document.getElementById('btnFetchSheetsMain');
+  const dropdownsMainRow = document.getElementById('dropdownsMainRow');
+  const selectSheetProd = document.getElementById('selectSheetProd');
+  const selectSheetOtmen = document.getElementById('selectSheetOtmen');
+  
+  const btnFetchSheetsOp1 = document.getElementById('btnFetchSheetsOp1');
+  const dropdownsOp1Row = document.getElementById('dropdownsOp1Row');
+  const selectSheetOp1 = document.getElementById('selectSheetOp1');
   
   const btnSave = document.getElementById('btnSave');
   const btnTestTelegram = document.getElementById('btnTestTelegram');
@@ -15,6 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const toastContainer = document.getElementById('toastContainer');
   const indicatorDot = document.querySelector('.indicator-dot');
 
+  let activePassword = localStorage.getItem('dashboard_password') || '';
+  
   // 1. Resolve and Save Backend Server URL (for Vercel cross-origin support)
   let savedApiUrl = localStorage.getItem('api_server_url') || '';
   if (!savedApiUrl) {
@@ -32,21 +51,93 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     apiUrlInput.value = url;
     localStorage.setItem('api_server_url', url);
-    showToast('Сервер API', 'Адрес сервера обновлен. Перезагрузка настроек...', 'success');
-    loadSettings();
+    showToast('Сервер API', 'Адрес сервера обновлен. Переподключение...', 'success');
+    checkAuthAndLoad();
   });
 
-  // Helper to construct fully qualified API URL
   function getEndpoint(path) {
     const base = apiUrlInput.value.trim() || window.location.origin;
     return `${base}${path}`;
   }
 
-  // 2. Fetch and Load Settings from Backend
+  // 2. Authentication flow
+  async function checkAuthAndLoad() {
+    if (!activePassword) {
+      showLoginScreen();
+      return;
+    }
+
+    try {
+      // Validate password against login endpoint
+      const response = await fetch(getEndpoint('/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: activePassword })
+      });
+      
+      if (response.ok) {
+        // Unlock panel
+        loginOverlay.classList.add('hidden');
+        mainContent.classList.remove('hidden');
+        loadSettings();
+      } else {
+        localStorage.removeItem('dashboard_password');
+        activePassword = '';
+        showLoginScreen();
+        showToast('Ошибка авторизации', 'Сессия истекла или неверный пароль.', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      // If server is unreachable, still show login screen to prevent locking
+      showLoginScreen();
+      showToast('Ошибка подключения', 'Не удалось связаться с сервером бэкенда.', 'error');
+    }
+  }
+
+  function showLoginScreen() {
+    loginOverlay.classList.remove('hidden');
+    mainContent.classList.add('hidden');
+  }
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const entered = loginPasswordInput.value.trim();
+    if (!entered) return;
+
+    btnLogin.disabled = true;
+    try {
+      const response = await fetch(getEndpoint('/api/login'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: entered })
+      });
+      
+      const data = await response.json();
+      if (response.ok && data.success) {
+        activePassword = entered;
+        localStorage.setItem('dashboard_password', entered);
+        loginOverlay.classList.add('hidden');
+        mainContent.classList.remove('hidden');
+        loadSettings();
+      } else {
+        showToast('Ошибка', data.error || 'Неверный пароль', 'error');
+        loginPasswordInput.value = '';
+        loginPasswordInput.focus();
+      }
+    } catch (err) {
+      showToast('Ошибка подключения', 'Не удалось связаться с сервером.', 'error');
+    } finally {
+      btnLogin.disabled = false;
+    }
+  });
+
+  // 3. Fetch configuration settings
   async function loadSettings() {
     indicatorDot.classList.remove('active');
     try {
-      const response = await fetch(getEndpoint('/api/settings'));
+      const response = await fetch(getEndpoint('/api/settings'), {
+        headers: { 'Authorization': activePassword }
+      });
       const data = await response.json();
       
       if (data && data.success) {
@@ -56,25 +147,123 @@ document.addEventListener('DOMContentLoaded', () => {
         appsScriptUrlInput.value = settings.APPS_SCRIPT_URL || '';
         appsScriptUrlOp1Input.value = settings.APPS_SCRIPT_URL_OP1 || '';
         timezoneInput.value = settings.TIMEZONE || 'Asia/Almaty';
+        dashboardPasswordInput.value = settings.DASHBOARD_PASSWORD || 'admin';
         
         indicatorDot.classList.add('active');
-        showToast('Настройки загружены', 'Конфигурация успешно получена с сервера Railway.', 'success');
+        showToast('Успешно', 'Настройки бэкенда загружены.', 'success');
+        
+        // Auto-fetch sheet lists on load if URLs are active
+        if (settings.APPS_SCRIPT_URL) fetchSheetsMain(false);
+        if (settings.APPS_SCRIPT_URL_OP1) fetchSheetsOp1(false);
       } else {
-        throw new Error(data.error || 'Ошибка формата ответа');
+        throw new Error(data.error || 'Ошибка формата');
       }
     } catch (err) {
-      console.error('Failed to load settings:', err);
-      showToast(
-        'Ошибка соединения', 
-        `Не удалось подключиться к API бэкенда. Проверьте правильность адреса сервера и запущен ли бот.`, 
-        'error'
-      );
+      showToast('Ошибка данных', 'Не удалось загрузить настройки.', 'error');
     }
   }
 
-  loadSettings();
+  // Helper to get current month name in Russian (e.g. "Май")
+  function getCurrentMonthName() {
+    const months = [
+      'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+      'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+    ];
+    return months[new Date().getMonth()];
+  }
 
-  // 3. Save Configuration Action
+  // 4. Fetch available sheets for Main department
+  async function fetchSheetsMain(showNotice = true) {
+    const url = appsScriptUrlInput.value.trim();
+    if (!url) return;
+
+    if (showNotice) showToast('Основной отдел', 'Загрузка списка листов таблицы...', 'info');
+
+    try {
+      const response = await fetch(getEndpoint('/api/fetch-sheets-list'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activePassword 
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await response.json();
+
+      if (data && data.success && data.sheets.length > 0) {
+        const sheets = data.sheets;
+        populateDropdown(selectSheetProd, sheets, 'продлен');
+        populateDropdown(selectSheetOtmen, sheets, 'отмен');
+        dropdownsMainRow.classList.remove('hidden');
+        if (showNotice) showToast('Вкладки получены', `Основной отдел: загружено ${sheets.length} вкладок.`, 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      if (showNotice) showToast('Ошибка листов', 'Не удалось загрузить листы основного отдела.', 'error');
+    }
+  }
+
+  // 5. Fetch available sheets for OP1 department
+  async function fetchSheetsOp1(showNotice = true) {
+    const url = appsScriptUrlOp1Input.value.trim();
+    if (!url) return;
+
+    if (showNotice) showToast('Отдел ОП1', 'Загрузка списка листов таблицы ОП1...', 'info');
+
+    try {
+      const response = await fetch(getEndpoint('/api/fetch-sheets-list'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activePassword 
+        },
+        body: JSON.stringify({ url })
+      });
+      const data = await response.json();
+
+      if (data && data.success && data.sheets.length > 0) {
+        const sheets = data.sheets;
+        populateDropdown(selectSheetOp1, sheets, 'общие продажи');
+        dropdownsOp1Row.classList.remove('hidden');
+        if (showNotice) showToast('Вкладки получены', `Отдел ОП1: загружено ${sheets.length} вкладок.`, 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      if (showNotice) showToast('Ошибка листов', 'Не удалось загрузить листы таблицы ОП1.', 'error');
+    }
+  }
+
+  // Populates select dropdown elements and auto-preselects matching tabs
+  function populateDropdown(selectElement, sheetsList, keywordFilter) {
+    selectElement.innerHTML = '';
+    const currentMonth = getCurrentMonthName().toLowerCase();
+    
+    let matchedIndex = 0;
+    
+    sheetsList.forEach((sheetName, index) => {
+      const option = document.createElement('option');
+      option.value = sheetName;
+      option.textContent = sheetName;
+      selectElement.appendChild(option);
+      
+      const lowerName = sheetName.toLowerCase();
+      // Auto-preselect matching tabs (e.g. contains current month and matches keywords like 'продлен' / 'отмен')
+      if (lowerName.includes(currentMonth)) {
+        if (keywordFilter === 'общие продажи' && !lowerName.includes('продлен') && !lowerName.includes('отмен')) {
+          matchedIndex = index;
+        } else if (lowerName.includes(keywordFilter)) {
+          matchedIndex = index;
+        }
+      }
+    });
+
+    selectElement.selectedIndex = matchedIndex;
+  }
+
+  btnFetchSheetsMain.addEventListener('click', () => fetchSheetsMain(true));
+  btnFetchSheetsOp1.addEventListener('click', () => fetchSheetsOp1(true));
+
+  // 6. Save Configuration Action
   settingsForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     setLoadingState(btnSave, true);
@@ -84,19 +273,28 @@ document.addEventListener('DOMContentLoaded', () => {
       CHAT_ID: chatIdInput.value.trim(),
       APPS_SCRIPT_URL: appsScriptUrlInput.value.trim(),
       APPS_SCRIPT_URL_OP1: appsScriptUrlOp1Input.value.trim(),
-      TIMEZONE: timezoneInput.value.trim()
+      TIMEZONE: timezoneInput.value.trim(),
+      DASHBOARD_PASSWORD: dashboardPasswordInput.value.trim()
     };
 
     try {
       const response = await fetch(getEndpoint('/api/settings'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activePassword
+        },
         body: JSON.stringify(payload)
       });
       const data = await response.json();
 
       if (data && data.success) {
-        showToast('Успешно сохранено', 'Настройки сохранены на бэкенде и применены мгновенно в памяти!', 'success');
+        showToast('Успешно сохранено', 'Настройки сохранены на бэкенде Railway и применены мгновенно!', 'success');
+        // If password was edited, update our browser session to prevent lockout
+        if (payload.DASHBOARD_PASSWORD !== activePassword) {
+          activePassword = payload.DASHBOARD_PASSWORD;
+          localStorage.setItem('dashboard_password', activePassword);
+        }
       } else {
         throw new Error(data.error || 'Неизвестная ошибка');
       }
@@ -107,7 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 4. Test Telegram Connection Action
+  // 7. Test Telegram Connection Action
   btnTestTelegram.addEventListener('click', async () => {
     const token = botTokenInput.value.trim();
     const chat = chatIdInput.value.trim();
@@ -122,13 +320,16 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch(getEndpoint('/api/test-telegram'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activePassword
+        },
         body: JSON.stringify({ BOT_TOKEN: token, CHAT_ID: chat })
       });
       const data = await response.json();
 
       if (data && data.success) {
-        showToast('Успех!', 'Тестовое сообщение успешно доставлено во все указанные чаты!', 'success');
+        showToast('Успех!', 'Тестовое сообщение доставлено во все указанные чаты!', 'success');
       } else {
         const errors = data.results && data.results.failed ? data.results.failed.map(f => f.error).join(', ') : 'Неизвестно';
         throw new Error(`Ошибка доставки: ${errors}`);
@@ -140,7 +341,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 5. Test Google Sheets Connection Action
+  // 8. Test Google Sheets Connection Action
   btnTestSheets.addEventListener('click', async () => {
     const mainUrl = appsScriptUrlInput.value.trim();
     const op1Url = appsScriptUrlOp1Input.value.trim();
@@ -155,7 +356,10 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const response = await fetch(getEndpoint('/api/test-sheets'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activePassword
+        },
         body: JSON.stringify({ APPS_SCRIPT_URL: mainUrl, APPS_SCRIPT_URL_OP1: op1Url })
       });
       const data = await response.json();
@@ -220,4 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 300);
     }, 5000);
   }
+
+  // Trigger Auth check immediately
+  checkAuthAndLoad();
 });

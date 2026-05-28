@@ -27,6 +27,7 @@ let currentConfig = {
   },
   APPS_SCRIPT_URL: process.env.APPS_SCRIPT_URL || '',
   APPS_SCRIPT_URL_OP1: process.env.APPS_SCRIPT_URL_OP1 || '',
+  DASHBOARD_PASSWORD: process.env.DASHBOARD_PASSWORD || 'admin',
 };
 
 // Load saved settings if they exist
@@ -39,6 +40,7 @@ function loadSettings() {
       if (saved.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(saved.CHAT_ID);
       if (saved.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = saved.APPS_SCRIPT_URL;
       if (saved.APPS_SCRIPT_URL_OP1) currentConfig.APPS_SCRIPT_URL_OP1 = saved.APPS_SCRIPT_URL_OP1;
+      if (saved.DASHBOARD_PASSWORD) currentConfig.DASHBOARD_PASSWORD = saved.DASHBOARD_PASSWORD;
     }
   } catch (err) {
     console.error('Failed to load settings.json:', err.message);
@@ -58,6 +60,8 @@ module.exports = {
   get APPS_SCRIPT_URL_OP1() { return currentConfig.APPS_SCRIPT_URL_OP1; },
   set APPS_SCRIPT_URL_OP1(val) { currentConfig.APPS_SCRIPT_URL_OP1 = val; },
 
+  get DASHBOARD_PASSWORD() { return currentConfig.DASHBOARD_PASSWORD; },
+
   // Saves settings to settings.json and updates in-memory config instantly
   saveSettings(newSettings) {
     try {
@@ -68,6 +72,7 @@ module.exports = {
       if (newSettings.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(newSettings.CHAT_ID);
       if (newSettings.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = newSettings.APPS_SCRIPT_URL;
       if (newSettings.APPS_SCRIPT_URL_OP1) currentConfig.APPS_SCRIPT_URL_OP1 = newSettings.APPS_SCRIPT_URL_OP1;
+      if (newSettings.DASHBOARD_PASSWORD) currentConfig.DASHBOARD_PASSWORD = newSettings.DASHBOARD_PASSWORD;
       
       return true;
     } catch (err) {
@@ -90,7 +95,8 @@ module.exports = {
       CHAT_ID: process.env.CHAT_ID || '',
       APPS_SCRIPT_URL: currentConfig.APPS_SCRIPT_URL,
       APPS_SCRIPT_URL_OP1: currentConfig.APPS_SCRIPT_URL_OP1,
-      TIMEZONE: currentConfig.TIMEZONE
+      TIMEZONE: currentConfig.TIMEZONE,
+      DASHBOARD_PASSWORD: currentConfig.DASHBOARD_PASSWORD
     };
   }
 };

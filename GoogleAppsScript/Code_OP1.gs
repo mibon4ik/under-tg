@@ -23,7 +23,21 @@
 function doGet(e) {
   try {
     var p = e && e.parameter ? e.parameter : {};
+    var action = p.action || '';
     var date = p.date || '';
+    
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (!ss) {
+      return crmJson_({ ok: false, error: 'spreadsheet_not_found' });
+    }
+    
+    // Возвращаем список всех листов в таблице
+    if (action === 'listSheets') {
+      var sheetsList = ss.getSheets().map(function(sh) {
+        return sh.getName();
+      });
+      return crmJson_({ ok: true, sheets: sheetsList });
+    }
     
     var months = {
       '01': 'Январь', '02': 'Февраль', '03': 'Март', '04': 'Апрель',
@@ -36,11 +50,6 @@ function doGet(e) {
     var parts = targetDate.split('.');
     var monthIndex = parts[1] || '05';
     var monthName = months[monthIndex] || 'Май';
-    
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (!ss) {
-      return crmJson_({ ok: false, error: 'spreadsheet_not_found' });
-    }
     
     var result = {};
     var sheets = ss.getSheets();

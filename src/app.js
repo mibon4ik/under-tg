@@ -42,11 +42,37 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Secure Password Authorization Middleware for all API routes
+const authMiddleware = (req, res, next) => {
+  const authHeader = req.headers['authorization'] || '';
+  const activePassword = config.DASHBOARD_PASSWORD || 'admin';
+  
+  if (authHeader !== activePassword) {
+    return res.status(401).json({ success: false, error: 'Unauthorized: Invalid password' });
+  }
+  next();
+};
+
+/**
+ * Validate password for UI login
+ * POST /api/login
+ */
+app.post('/api/login', (req, res) => {
+  const { password } = req.body;
+  const activePassword = config.DASHBOARD_PASSWORD || 'admin';
+  
+  if (password === activePassword) {
+    res.json({ success: true });
+  } else {
+    res.status(401).json({ success: false, error: 'Неверный пароль' });
+  }
+});
+
 /**
  * Get active raw configuration settings
  * GET /api/settings
  */
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', authMiddleware, (req, res) => {
   res.json({
     success: true,
     settings: config.getRawSettings()
@@ -57,7 +83,7 @@ app.get('/api/settings', (req, res) => {
  * Save new configuration settings live to settings.json
  * POST /api/settings
  */
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', authMiddleware, (req, res) => {
   const newSettings = req.body;
   if (!newSettings) {
     return res.status(400).json({ success: false, error: 'Empty settings payload' });
@@ -76,7 +102,7 @@ app.post('/api/settings', (req, res) => {
  * Test Telegram Bot connection live (sends test message)
  * POST /api/test-telegram
  */
-app.post('/api/test-telegram', async (req, res) => {
+app.post('/api/test-telegram', authMiddleware, async (req, res) => {
   const { BOT_TOKEN, CHAT_ID } = req.body;
   if (!BOT_TOKEN || !CHAT_ID) {
     return res.status(400).json({ success: false, error: 'BOT_TOKEN and CHAT_ID are required' });
@@ -108,7 +134,7 @@ app.post('/api/test-telegram', async (req, res) => {
  * Test Google Sheets connection URLs live
  * POST /api/test-sheets
  */
-app.post('/api/test-sheets', async (req, res) => {
+app.post('/api/test-sheets', authMiddleware, async (req, res) => {
   const { APPS_SCRIPT_URL, APPS_SCRIPT_URL_OP1 } = req.body;
   const results = {
     sheets: { ok: false, error: null, date: null, sheetsList: [] },
@@ -166,11 +192,45 @@ app.post('/api/test-sheets', async (req, res) => {
 });
 
 /**
+ * Fetch available sheets list (tabs) dynamically from Google Spreadsheet Apps Script
+ * POST /api/fetch-sheets-list
+ */
+app.post('/api/fetch-sheets-list', authMiddleware, async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ success: false, error: 'URL is required' });
+  }
+
+  try {
+    const response = await axios.get(url, {
+      params: { action: 'listSheets' },
+      timeout: 10000
+    });
+    if (response.data && response.data.ok) {
+      res.json({
+        success: true,
+        sheets: response.data.sheets || []
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: response.data ? response.data.error : 'Failed to retrieve sheets list'
+      });
+    }
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
  * Manual trigger endpoint for report sending
  * POST /send-report
  * Accepts optional JSON body: { "date": "26.05.2026" }
  */
-app.post('/send-report', async (req, res) => {
+app.post('/send-report', authMiddleware, async (req, res) => {
   logger.info('Manual report trigger endpoint received a request.');
   
   const targetDate = req.body && req.body.date ? String(req.body.date).trim() : null;

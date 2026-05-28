@@ -11,8 +11,23 @@
 </head>
 <body>
   <div class="glowing-bg"></div>
+
+  <!-- Glassmorphic Login Overlay -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-logo">🔒</div>
+      <h2>Авторизация</h2>
+      <p>Пожалуйста, введите пароль для доступа к панели управления отчетами</p>
+      <form id="loginForm" class="login-form">
+        <div class="input-group">
+          <input type="password" id="loginPassword" placeholder="Введите пароль..." required autofocus>
+        </div>
+        <button type="submit" id="btnLogin" class="btn btn-primary">Войти в панель</button>
+      </form>
+    </div>
+  </div>
   
-  <div class="container">
+  <div class="container main-content hidden" id="mainContent">
     <header class="app-header">
       <div class="logo-wrapper">
         <span class="logo-emoji">⚡</span>
@@ -23,7 +38,7 @@
 
     <div class="server-config-card">
       <div class="card-header">
-        <span class="indicator-dot active"></span>
+        <span class="indicator-dot"></span>
         <h2>1. Подключение к серверу API</h2>
       </div>
       <p class="description">Укажите адрес вашего сервера на Railway (или оставьте текущий, если открыто напрямую).</p>
@@ -70,16 +85,50 @@
             <h3>Интеграция с таблицами</h3>
           </div>
 
-          <div class="input-group">
-            <label for="appsScriptUrl">Apps Script URL (Основной отдел)</label>
-            <input type="url" id="appsScriptUrl" required placeholder="https://script.google.com/macros/s/AKfycb.../exec">
-            <span class="input-hint">Отдел продлений и отмен (Code.gs)</span>
+          <!-- Apps Script 1 -->
+          <div class="sheet-connection-block">
+            <div class="input-group">
+              <label for="appsScriptUrl">Apps Script URL (Основной отдел)</label>
+              <div class="url-input-row">
+                <input type="url" id="appsScriptUrl" required placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+                <button type="button" id="btnFetchSheetsMain" class="btn btn-secondary btn-icon-only" title="Загрузить листы таблицы">🔄</button>
+              </div>
+              <span class="input-hint">Отдел продлений и отмен (Code.gs)</span>
+            </div>
+
+            <!-- Dynamic Dropdowns for Sheet 1 -->
+            <div class="dropdowns-row hidden" id="dropdownsMainRow">
+              <div class="input-group">
+                <label for="selectSheetProd">Лист Продлений</label>
+                <select id="selectSheetProd" class="custom-select"></select>
+              </div>
+              <div class="input-group">
+                <label for="selectSheetOtmen">Лист Отмен</label>
+                <select id="selectSheetOtmen" class="custom-select"></select>
+              </div>
+            </div>
           </div>
 
-          <div class="input-group">
-            <label for="appsScriptUrlOp1">Apps Script URL (Отдел ОП1)</label>
-            <input type="url" id="appsScriptUrlOp1" required placeholder="https://script.google.com/macros/s/AKfycb.../exec">
-            <span class="input-hint">Отдел общих продаж (Code_OP1.gs)</span>
+          <div class="divider"></div>
+
+          <!-- Apps Script OP1 -->
+          <div class="sheet-connection-block">
+            <div class="input-group">
+              <label for="appsScriptUrlOp1">Apps Script URL (Отдел ОП1)</label>
+              <div class="url-input-row">
+                <input type="url" id="appsScriptUrlOp1" required placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+                <button type="button" id="btnFetchSheetsOp1" class="btn btn-secondary btn-icon-only" title="Загрузить листы таблицы">🔄</button>
+              </div>
+              <span class="input-hint">Отдел общих продаж (Code_OP1.gs)</span>
+            </div>
+
+            <!-- Dynamic Dropdown for Sheet OP1 -->
+            <div class="dropdowns-row hidden" id="dropdownsOp1Row">
+              <div class="input-group">
+                <label for="selectSheetOp1">Лист Продаж ОП1</label>
+                <select id="selectSheetOp1" class="custom-select"></select>
+              </div>
+            </div>
           </div>
 
           <div class="card-actions">
@@ -101,7 +150,13 @@
             <div class="input-group">
               <label for="timezone">Часовой пояс (TIMEZONE)</label>
               <input type="text" id="timezone" required placeholder="Asia/Almaty">
-              <span class="input-hint">Используется для расписания отчетов (например, Asia/Almaty)</span>
+              <span class="input-hint">Используется для запуска отчетов (например, Asia/Almaty)</span>
+            </div>
+
+            <div class="input-group">
+              <label for="dashboardPassword">Пароль от веб-панели (DASHBOARD_PASSWORD)</label>
+              <input type="password" id="dashboardPassword" required placeholder="Введите новый пароль...">
+              <span class="input-hint">Смените пароль для ограничения доступа к этой странице</span>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 /* Modern CSS Variables & Resets */
 :root {
   --bg-color: #0b0c10;
-  --card-bg: rgba(22, 26, 37, 0.45);
+  --card-bg: rgba(22, 26, 37, 0.55);
   --card-border: rgba(255, 255, 255, 0.08);
   --card-border-focus: rgba(138, 92, 246, 0.5);
   
@@ -32,6 +32,10 @@ body {
   position: relative;
   overflow-x: hidden;
   padding: 2rem 1rem;
+}
+
+.hidden {
+  display: none !important;
 }
 
 /* Glowing Neon Background Gradients */
@@ -113,7 +117,8 @@ body {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background-color: var(--text-muted);
+  background-color: var(--text-error);
+  box-shadow: 0 0 10px var(--text-error);
 }
 
 .indicator-dot.active {
@@ -172,7 +177,7 @@ body {
 }
 
 .card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 12px 40px rgba(138, 92, 246, 0.1);
 }
@@ -208,7 +213,7 @@ body {
   color: var(--text-color);
 }
 
-.input-group input {
+.input-group input, .custom-select {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -219,7 +224,22 @@ body {
   transition: border var(--transition-speed), box-shadow var(--transition-speed), background-color var(--transition-speed);
 }
 
-.input-group input:focus {
+.custom-select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='white'><path d='M8 10l-4-4h8z'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+.custom-select option {
+  background: #1e2230;
+  color: #fff;
+}
+
+.input-group input:focus, .custom-select:focus {
   outline: none;
   background: rgba(255, 255, 255, 0.05);
   border-color: var(--card-border-focus);
@@ -241,6 +261,46 @@ body {
   .inputs-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* Sheets Section Layout updates */
+.sheet-connection-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.url-input-row {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.url-input-row input {
+  flex-grow: 1;
+}
+
+.btn-icon-only {
+  padding: 0.85rem;
+  width: 48px;
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.dropdowns-row {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.05);
+  padding: 1rem;
+  border-radius: 12px;
+  animation: slide-down 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 0.5rem 0;
 }
 
 /* Buttons and Loaders */
@@ -327,6 +387,68 @@ body {
   padding-bottom: 2rem;
 }
 
+/* Glassmorphic Login Overlay Overlay */
+.login-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(8, 9, 12, 0.85);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  transition: opacity var(--transition-speed);
+}
+
+.login-card {
+  background: rgba(22, 26, 37, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 450px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  text-align: center;
+  animation: scale-up 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.login-logo {
+  font-size: 3rem;
+  margin-bottom: 0.5rem;
+  animation: pulse-glow 2s infinite alternate;
+}
+
+.login-card h2 {
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.login-card p {
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.login-form input {
+  text-align: center;
+  font-size: 1.1rem;
+  padding: 0.95rem;
+}
+
 /* Toast Notifications */
 .toast-container {
   position: fixed;
@@ -335,7 +457,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  z-index: 1000;
+  z-index: 3000;
 }
 
 .toast {
@@ -396,4 +518,14 @@ body {
 @keyframes slide-in {
   from { transform: translateX(100%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-down {
+  from { transform: translateY(-10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes scale-up {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
 }
