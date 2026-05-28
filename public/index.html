@@ -17,10 +17,15 @@
     <div class="login-card">
       <div class="login-logo">🔒</div>
       <h2>Авторизация</h2>
-      <p>Пожалуйста, введите пароль для доступа к панели управления отчетами</p>
+      <p>Пожалуйста, введите имя пользователя и пароль для доступа к панели</p>
       <form id="loginForm" class="login-form">
         <div class="input-group">
-          <input type="password" id="loginPassword" placeholder="Введите пароль..." required autofocus>
+          <label for="loginUsername">Логин</label>
+          <input type="text" id="loginUsername" placeholder="Введите логин..." required value="admin" autofocus>
+        </div>
+        <div class="input-group">
+          <label for="loginPassword">Пароль</label>
+          <input type="password" id="loginPassword" placeholder="Введите пароль..." required>
         </div>
         <button type="submit" id="btnLogin" class="btn btn-primary">Войти в панель</button>
       </form>

@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   const loginOverlay = document.getElementById('loginOverlay');
   const loginForm = document.getElementById('loginForm');
+  const loginUsernameInput = document.getElementById('loginUsername');
   const loginPasswordInput = document.getElementById('loginPassword');
   const btnLogin = document.getElementById('btnLogin');
   
@@ -32,7 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const toastContainer = document.getElementById('toastContainer');
   const indicatorDot = document.querySelector('.indicator-dot');
 
-  let activePassword = localStorage.getItem('dashboard_password') || '';
+  let activeToken = localStorage.getItem('dashboard_token') || localStorage.getItem('dashboard_password') || '';
+  let activeSettings = null; // Store fetched settings globally
   
   // 1. Resolve and Save Backend Server URL (for Vercel cross-origin support)
   let savedApiUrl = localStorage.getItem('api_server_url') || '';
@@ -62,33 +64,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 2. Authentication flow
   async function checkAuthAndLoad() {
-    if (!activePassword) {
+    if (!activeToken) {
       showLoginScreen();
       return;
     }
 
     try {
-      // Validate password against login endpoint
-      const response = await fetch(getEndpoint('/api/login'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: activePassword })
+      // Validate session token by loading settings (or simple verification request)
+      const response = await fetch(getEndpoint('/api/settings'), {
+        headers: { 'Authorization': activeToken }
       });
       
       if (response.ok) {
-        // Unlock panel
-        loginOverlay.classList.add('hidden');
-        mainContent.classList.remove('hidden');
-        loadSettings();
+        const data = await response.json();
+        if (data && data.success) {
+          activeSettings = data.settings;
+          populateFormFields(data.settings);
+          
+          // Unlock panel
+          loginOverlay.classList.add('hidden');
+          mainContent.classList.remove('hidden');
+          indicatorDot.classList.add('active');
+          showToast('Успешно', 'Авторизовано. Настройки загружены.', 'success');
+          
+          // Auto-fetch sheet lists on load if URLs are active
+          if (activeSettings.APPS_SCRIPT_URL) fetchSheetsMain(false, activeSettings.SHEET_PROD, activeSettings.SHEET_OTMEN);
+          if (activeSettings.APPS_SCRIPT_URL_OP1) fetchSheetsOp1(false, activeSettings.SHEET_OP1);
+        }
       } else {
+        localStorage.removeItem('dashboard_token');
         localStorage.removeItem('dashboard_password');
-        activePassword = '';
+        activeToken = '';
         showLoginScreen();
-        showToast('Ошибка авторизации', 'Сессия истекла или неверный пароль.', 'error');
+        showToast('Ошибка авторизации', 'Сессия истекла или неверный логин/пароль.', 'error');
       }
     } catch (err) {
       console.error(err);
-      // If server is unreachable, still show login screen to prevent locking
       showLoginScreen();
       showToast('Ошибка подключения', 'Не удалось связаться с сервером бэкенда.', 'error');
     }
@@ -101,26 +112,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const entered = loginPasswordInput.value.trim();
-    if (!entered) return;
+    const username = loginUsernameInput.value.trim();
+    const password = loginPasswordInput.value.trim();
+    if (!password) return;
 
     btnLogin.disabled = true;
     try {
       const response = await fetch(getEndpoint('/api/login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: entered })
+        body: JSON.stringify({ username, password })
       });
       
       const data = await response.json();
       if (response.ok && data.success) {
-        activePassword = entered;
-        localStorage.setItem('dashboard_password', entered);
+        activeToken = data.token;
+        localStorage.setItem('dashboard_token', data.token);
+        localStorage.setItem('dashboard_username', data.username);
+        
         loginOverlay.classList.add('hidden');
         mainContent.classList.remove('hidden');
-        loadSettings();
+        checkAuthAndLoad();
       } else {
-        showToast('Ошибка', data.error || 'Неверный пароль', 'error');
+        showToast('Ошибка', data.error || 'Неверный логин или пароль', 'error');
         loginPasswordInput.value = '';
         loginPasswordInput.focus();
       }
@@ -131,30 +145,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 3. Fetch configuration settings
+  function populateFormFields(settings) {
+    botTokenInput.value = settings.BOT_TOKEN || '';
+    chatIdInput.value = settings.CHAT_ID || '';
+    appsScriptUrlInput.value = settings.APPS_SCRIPT_URL || '';
+    appsScriptUrlOp1Input.value = settings.APPS_SCRIPT_URL_OP1 || '';
+    timezoneInput.value = settings.TIMEZONE || 'Asia/Almaty';
+    dashboardPasswordInput.value = settings.DASHBOARD_PASSWORD || 'admin';
+  }
+
+  // 3. Fetch configuration settings (fallback trigger for updates)
   async function loadSettings() {
     indicatorDot.classList.remove('active');
     try {
       const response = await fetch(getEndpoint('/api/settings'), {
-        headers: { 'Authorization': activePassword }
+        headers: { 'Authorization': activeToken }
       });
       const data = await response.json();
       
       if (data && data.success) {
-        const settings = data.settings;
-        botTokenInput.value = settings.BOT_TOKEN || '';
-        chatIdInput.value = settings.CHAT_ID || '';
-        appsScriptUrlInput.value = settings.APPS_SCRIPT_URL || '';
-        appsScriptUrlOp1Input.value = settings.APPS_SCRIPT_URL_OP1 || '';
-        timezoneInput.value = settings.TIMEZONE || 'Asia/Almaty';
-        dashboardPasswordInput.value = settings.DASHBOARD_PASSWORD || 'admin';
-        
+        activeSettings = data.settings;
+        populateFormFields(activeSettings);
         indicatorDot.classList.add('active');
-        showToast('Успешно', 'Настройки бэкенда загружены.', 'success');
-        
-        // Auto-fetch sheet lists on load if URLs are active
-        if (settings.APPS_SCRIPT_URL) fetchSheetsMain(false);
-        if (settings.APPS_SCRIPT_URL_OP1) fetchSheetsOp1(false);
       } else {
         throw new Error(data.error || 'Ошибка формата');
       }
@@ -173,7 +185,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 4. Fetch available sheets for Main department
-  async function fetchSheetsMain(showNotice = true) {
+  async function fetchSheetsMain(showNotice = true, savedProd = '', savedOtmen = '') {
     const url = appsScriptUrlInput.value.trim();
     if (!url) return;
 
@@ -184,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': activePassword 
+          'Authorization': activeToken 
         },
         body: JSON.stringify({ url })
       });
@@ -192,8 +204,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data && data.success && data.sheets.length > 0) {
         const sheets = data.sheets;
-        populateDropdown(selectSheetProd, sheets, 'продлен');
-        populateDropdown(selectSheetOtmen, sheets, 'отмен');
+        populateDropdown(selectSheetProd, sheets, 'продлен', savedProd);
+        populateDropdown(selectSheetOtmen, sheets, 'отмен', savedOtmen);
         dropdownsMainRow.classList.remove('hidden');
         if (showNotice) showToast('Вкладки получены', `Основной отдел: загружено ${sheets.length} вкладок.`, 'success');
       }
@@ -204,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 5. Fetch available sheets for OP1 department
-  async function fetchSheetsOp1(showNotice = true) {
+  async function fetchSheetsOp1(showNotice = true, savedOp1 = '') {
     const url = appsScriptUrlOp1Input.value.trim();
     if (!url) return;
 
@@ -215,7 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': activePassword 
+          'Authorization': activeToken 
         },
         body: JSON.stringify({ url })
       });
@@ -223,7 +235,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data && data.success && data.sheets.length > 0) {
         const sheets = data.sheets;
-        populateDropdown(selectSheetOp1, sheets, 'общие продажи');
+        populateDropdown(selectSheetOp1, sheets, 'общие продажи', savedOp1);
         dropdownsOp1Row.classList.remove('hidden');
         if (showNotice) showToast('Вкладки получены', `Отдел ОП1: загружено ${sheets.length} вкладок.`, 'success');
       }
@@ -233,8 +245,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Populates select dropdown elements and auto-preselects matching tabs
-  function populateDropdown(selectElement, sheetsList, keywordFilter) {
+  // Populates select dropdown elements and auto-preselects matching tabs or saved overrides
+  function populateDropdown(selectElement, sheetsList, keywordFilter, savedOverrideVal) {
     selectElement.innerHTML = '';
     const currentMonth = getCurrentMonthName().toLowerCase();
     
@@ -246,13 +258,17 @@ document.addEventListener('DOMContentLoaded', () => {
       option.textContent = sheetName;
       selectElement.appendChild(option);
       
-      const lowerName = sheetName.toLowerCase();
-      // Auto-preselect matching tabs (e.g. contains current month and matches keywords like 'продлен' / 'отмен')
-      if (lowerName.includes(currentMonth)) {
-        if (keywordFilter === 'общие продажи' && !lowerName.includes('продлен') && !lowerName.includes('отмен')) {
-          matchedIndex = index;
-        } else if (lowerName.includes(keywordFilter)) {
-          matchedIndex = index;
+      if (savedOverrideVal && sheetName === savedOverrideVal) {
+        matchedIndex = index;
+      } else if (!savedOverrideVal) {
+        const lowerName = sheetName.toLowerCase();
+        // Auto-preselect matching tabs (e.g. contains current month and matches keywords like 'продлен' / 'отмен')
+        if (lowerName.includes(currentMonth)) {
+          if (keywordFilter === 'общие продажи' && !lowerName.includes('продлен') && !lowerName.includes('отмен')) {
+            matchedIndex = index;
+          } else if (lowerName.includes(keywordFilter)) {
+            matchedIndex = index;
+          }
         }
       }
     });
@@ -260,8 +276,12 @@ document.addEventListener('DOMContentLoaded', () => {
     selectElement.selectedIndex = matchedIndex;
   }
 
-  btnFetchSheetsMain.addEventListener('click', () => fetchSheetsMain(true));
-  btnFetchSheetsOp1.addEventListener('click', () => fetchSheetsOp1(true));
+  btnFetchSheetsMain.addEventListener('click', () => {
+    fetchSheetsMain(true, activeSettings ? activeSettings.SHEET_PROD : '', activeSettings ? activeSettings.SHEET_OTMEN : '');
+  });
+  btnFetchSheetsOp1.addEventListener('click', () => {
+    fetchSheetsOp1(true, activeSettings ? activeSettings.SHEET_OP1 : '');
+  });
 
   // 6. Save Configuration Action
   settingsForm.addEventListener('submit', async (e) => {
@@ -274,7 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
       APPS_SCRIPT_URL: appsScriptUrlInput.value.trim(),
       APPS_SCRIPT_URL_OP1: appsScriptUrlOp1Input.value.trim(),
       TIMEZONE: timezoneInput.value.trim(),
-      DASHBOARD_PASSWORD: dashboardPasswordInput.value.trim()
+      DASHBOARD_PASSWORD: dashboardPasswordInput.value.trim(),
+      SHEET_PROD: selectSheetProd.value || '',
+      SHEET_OTMEN: selectSheetOtmen.value || '',
+      SHEET_OP1: selectSheetOp1.value || ''
     };
 
     try {
@@ -282,18 +305,26 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': activePassword
+          'Authorization': activeToken
         },
         body: JSON.stringify(payload)
       });
       const data = await response.json();
 
       if (data && data.success) {
-        showToast('Успешно сохранено', 'Настройки сохранены на бэкенде Railway и применены мгновенно!', 'success');
-        // If password was edited, update our browser session to prevent lockout
-        if (payload.DASHBOARD_PASSWORD !== activePassword) {
-          activePassword = payload.DASHBOARD_PASSWORD;
-          localStorage.setItem('dashboard_password', activePassword);
+        showToast('Успешно сохранено', 'Настройки и выбранные листы сохранены в базу данных PostgreSQL!', 'success');
+        
+        // If password was edited, sessions are invalidated, let's ask to re-login
+        if (activeSettings && payload.DASHBOARD_PASSWORD !== activeSettings.DASHBOARD_PASSWORD) {
+          showToast('Безопасность', 'Пароль изменен. Пожалуйста, выполните повторный вход.', 'info');
+          setTimeout(() => {
+            localStorage.removeItem('dashboard_token');
+            localStorage.removeItem('dashboard_password');
+            window.location.reload();
+          }, 2000);
+        } else {
+          // Update local memory cache so dropdowns keep correct overrides
+          activeSettings = payload;
         }
       } else {
         throw new Error(data.error || 'Неизвестная ошибка');
@@ -322,7 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': activePassword
+          'Authorization': activeToken
         },
         body: JSON.stringify({ BOT_TOKEN: token, CHAT_ID: chat })
       });
@@ -358,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': activePassword
+          'Authorization': activeToken
         },
         body: JSON.stringify({ APPS_SCRIPT_URL: mainUrl, APPS_SCRIPT_URL_OP1: op1Url })
       });

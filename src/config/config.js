@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const dotenv = require('dotenv');
+const { Pool } = require('pg');
 
 // Load environment variables from .env file
 dotenv.config();
@@ -28,10 +29,76 @@ let currentConfig = {
   APPS_SCRIPT_URL: process.env.APPS_SCRIPT_URL || '',
   APPS_SCRIPT_URL_OP1: process.env.APPS_SCRIPT_URL_OP1 || '',
   DASHBOARD_PASSWORD: process.env.DASHBOARD_PASSWORD || 'admin',
+  SHEET_PROD: '',
+  SHEET_OTMEN: '',
+  SHEET_OP1: '',
 };
 
-// Load saved settings if they exist
-function loadSettings() {
+// PostgreSQL Connection Pool Setup
+let dbPool = null;
+const databaseUrl = process.env.DATABASE_URL;
+
+if (databaseUrl) {
+  console.log('[DB] Connecting to Railway PostgreSQL Database...');
+  dbPool = new Pool({
+    connectionString: databaseUrl,
+    ssl: { rejectUnauthorized: false } // Required for Railway internal/external pg connections
+  });
+} else {
+  console.log('[DB] DATABASE_URL not set. Falling back to local settings.json storage.');
+}
+
+// Setup DB Schema & Load Settings dynamically on startup
+async function initDb() {
+  if (dbPool) {
+    try {
+      // 1. Create settings table if not exists
+      await dbPool.query(`
+        CREATE TABLE IF NOT EXISTS settings (
+          key VARCHAR(255) PRIMARY KEY,
+          value TEXT
+        )
+      `);
+      console.log('[DB] Settings table initialized successfully.');
+
+      // Initialize authentication database tables and defaults
+      const authService = require('../services/auth.service');
+      await authService.initAuthDb(dbPool, currentConfig.DASHBOARD_PASSWORD || 'admin');
+
+      // 2. Load all settings from DB
+      const res = await dbPool.query('SELECT * FROM settings');
+      const dbSettings = {};
+      res.rows.forEach(row => {
+        dbSettings[row.key] = row.value;
+      });
+
+      console.log('[DB] Loaded settings from database.');
+
+      // 3. Map database settings to in-memory config
+      if (dbSettings.TIMEZONE) currentConfig.TIMEZONE = dbSettings.TIMEZONE;
+      if (dbSettings.BOT_TOKEN) currentConfig.TELEGRAM.BOT_TOKEN = dbSettings.BOT_TOKEN;
+      if (dbSettings.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(dbSettings.CHAT_ID);
+      if (dbSettings.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = dbSettings.APPS_SCRIPT_URL;
+      if (dbSettings.APPS_SCRIPT_URL_OP1) currentConfig.APPS_SCRIPT_URL_OP1 = dbSettings.APPS_SCRIPT_URL_OP1;
+      if (dbSettings.DASHBOARD_PASSWORD) currentConfig.DASHBOARD_PASSWORD = dbSettings.DASHBOARD_PASSWORD;
+      if (dbSettings.SHEET_PROD) currentConfig.SHEET_PROD = dbSettings.SHEET_PROD;
+      if (dbSettings.SHEET_OTMEN) currentConfig.SHEET_OTMEN = dbSettings.SHEET_OTMEN;
+      if (dbSettings.SHEET_OP1) currentConfig.SHEET_OP1 = dbSettings.SHEET_OP1;
+
+    } catch (err) {
+      console.error('[DB] Failed to initialize PostgreSQL settings:', err.message);
+      loadLocalSettings();
+      const authService = require('../services/auth.service');
+      authService.initAuthDb(null, currentConfig.DASHBOARD_PASSWORD || 'admin');
+    }
+  } else {
+    loadLocalSettings();
+    const authService = require('../services/auth.service');
+    authService.initAuthDb(null, currentConfig.DASHBOARD_PASSWORD || 'admin');
+  }
+}
+
+function loadLocalSettings() {
   try {
     if (fs.existsSync(settingsFilePath)) {
       const saved = JSON.parse(fs.readFileSync(settingsFilePath, 'utf8'));
@@ -41,15 +108,21 @@ function loadSettings() {
       if (saved.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = saved.APPS_SCRIPT_URL;
       if (saved.APPS_SCRIPT_URL_OP1) currentConfig.APPS_SCRIPT_URL_OP1 = saved.APPS_SCRIPT_URL_OP1;
       if (saved.DASHBOARD_PASSWORD) currentConfig.DASHBOARD_PASSWORD = saved.DASHBOARD_PASSWORD;
+      if (saved.SHEET_PROD) currentConfig.SHEET_PROD = saved.SHEET_PROD;
+      if (saved.SHEET_OTMEN) currentConfig.SHEET_OTMEN = saved.SHEET_OTMEN;
+      if (saved.SHEET_OP1) currentConfig.SHEET_OP1 = saved.SHEET_OP1;
+      console.log('[Local] Loaded settings from settings.json.');
     }
   } catch (err) {
-    console.error('Failed to load settings.json:', err.message);
+    console.error('[Local] Failed to load settings.json:', err.message);
   }
 }
 
-loadSettings();
+// Trigger initialization immediately
+initDb();
 
 module.exports = {
+  get dbPool() { return dbPool; },
   get PORT() { return currentConfig.PORT; },
   get TIMEZONE() { return currentConfig.TIMEZONE; },
   get TELEGRAM() { return currentConfig.TELEGRAM; },
@@ -61,42 +134,74 @@ module.exports = {
   set APPS_SCRIPT_URL_OP1(val) { currentConfig.APPS_SCRIPT_URL_OP1 = val; },
 
   get DASHBOARD_PASSWORD() { return currentConfig.DASHBOARD_PASSWORD; },
+  
+  get SHEET_PROD() { return currentConfig.SHEET_PROD; },
+  get SHEET_OTMEN() { return currentConfig.SHEET_OTMEN; },
+  get SHEET_OP1() { return currentConfig.SHEET_OP1; },
 
-  // Saves settings to settings.json and updates in-memory config instantly
-  saveSettings(newSettings) {
+  // Saves settings dynamically to PostgreSQL and local fallback settings.json
+  async saveSettings(newSettings) {
     try {
-      fs.writeFileSync(settingsFilePath, JSON.stringify(newSettings, null, 2), 'utf8');
-      
+      // 1. Update local config in memory
       if (newSettings.TIMEZONE) currentConfig.TIMEZONE = newSettings.TIMEZONE;
       if (newSettings.BOT_TOKEN) currentConfig.TELEGRAM.BOT_TOKEN = newSettings.BOT_TOKEN;
       if (newSettings.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(newSettings.CHAT_ID);
       if (newSettings.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = newSettings.APPS_SCRIPT_URL;
       if (newSettings.APPS_SCRIPT_URL_OP1) currentConfig.APPS_SCRIPT_URL_OP1 = newSettings.APPS_SCRIPT_URL_OP1;
       if (newSettings.DASHBOARD_PASSWORD) currentConfig.DASHBOARD_PASSWORD = newSettings.DASHBOARD_PASSWORD;
+      currentConfig.SHEET_PROD = newSettings.SHEET_PROD || '';
+      currentConfig.SHEET_OTMEN = newSettings.SHEET_OTMEN || '';
+      currentConfig.SHEET_OP1 = newSettings.SHEET_OP1 || '';
+
+      // 2. Persist to PostgreSQL if connection is active
+      if (dbPool) {
+        console.log('[DB] Saving settings to PostgreSQL database...');
+        const keys = [
+          'TIMEZONE', 'BOT_TOKEN', 'CHAT_ID', 
+          'APPS_SCRIPT_URL', 'APPS_SCRIPT_URL_OP1', 'DASHBOARD_PASSWORD',
+          'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1'
+        ];
+        
+        for (const k of keys) {
+          let val = '';
+          if (k === 'CHAT_ID') val = newSettings.CHAT_ID || '';
+          else if (k === 'BOT_TOKEN') val = newSettings.BOT_TOKEN || '';
+          else val = newSettings[k] || '';
+          
+          await dbPool.query(`
+            INSERT INTO settings (key, value) 
+            VALUES ($1, $2) 
+            ON CONFLICT (key) 
+            DO UPDATE SET value = $2
+          `, [k, val]);
+        }
+        console.log('[DB] Settings successfully saved to PostgreSQL database.');
+      }
+
+      // 3. Keep local backup in settings.json
+      fs.writeFileSync(settingsFilePath, JSON.stringify(newSettings, null, 2), 'utf8');
       
       return true;
     } catch (err) {
-      console.error('Failed to save settings.json:', err.message);
+      console.error('[DB] Failed to save settings:', err.message);
       return false;
     }
   },
 
   // Returns the current settings format optimized for form editing
   getRawSettings() {
-    if (fs.existsSync(settingsFilePath)) {
-      try {
-        return JSON.parse(fs.readFileSync(settingsFilePath, 'utf8'));
-      } catch (e) {}
-    }
-    
-    // Fallback to currently active config loaded from process.env
     return {
       BOT_TOKEN: currentConfig.TELEGRAM.BOT_TOKEN,
-      CHAT_ID: process.env.CHAT_ID || '',
+      CHAT_ID: currentConfig.TELEGRAM.CHAT_IDS.join(','),
       APPS_SCRIPT_URL: currentConfig.APPS_SCRIPT_URL,
       APPS_SCRIPT_URL_OP1: currentConfig.APPS_SCRIPT_URL_OP1,
       TIMEZONE: currentConfig.TIMEZONE,
-      DASHBOARD_PASSWORD: currentConfig.DASHBOARD_PASSWORD
+      DASHBOARD_PASSWORD: currentConfig.DASHBOARD_PASSWORD,
+      SHEET_PROD: currentConfig.SHEET_PROD,
+      SHEET_OTMEN: currentConfig.SHEET_OTMEN,
+      SHEET_OP1: currentConfig.SHEET_OP1
     };
-  }
+  },
+  
+  initDb
 };

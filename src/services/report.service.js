@@ -192,6 +192,20 @@ class ReportService {
     for (const [sheetName, rows] of Object.entries(rawData)) {
       if (!rows || rows.length <= 1) continue;
 
+      const normalizedSheetName = sheetName.toLowerCase();
+      const configuredOtmenSheet = config.SHEET_OTMEN;
+      const configuredProdSheet = config.SHEET_PROD;
+      
+      if (normalizedSheetName.includes('отмен')) {
+        if (configuredOtmenSheet && sheetName !== configuredOtmenSheet) {
+          continue; // Пропускаем, если задан конкретный лист отмен и имя не совпадает
+        }
+      } else {
+        if (configuredProdSheet && sheetName !== configuredProdSheet) {
+          continue; // Пропускаем, если задан конкретный лист продлений и имя не совпадает
+        }
+      }
+
       let sheetHasDataForDay = false;
 
       // Skip header row
@@ -386,8 +400,14 @@ class ReportService {
         let totalAccumulatedSalesCount = 0;
         let activeSheetName = '';
 
+        const configuredOp1Sheet = config.SHEET_OP1;
+
         for (const [sheetName, rows] of Object.entries(rawData)) {
           if (!rows || rows.length <= 1) continue;
+          
+          if (configuredOp1Sheet && sheetName !== configuredOp1Sheet) {
+            continue; // Пропускаем, если задан конкретный лист ОП1 и имя не совпадает
+          }
           
           activeSheetName = sheetName;
 

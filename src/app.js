@@ -5,6 +5,7 @@ const reportService = require('./services/report.service');
 const logger = require('./utils/logger');
 const telegramService = require('./services/telegram.service');
 const config = require('./config/config');
+const authService = require('./services/auth.service');
 
 const app = express();
 
@@ -43,28 +44,46 @@ app.get('/health', (req, res) => {
 });
 
 // Secure Password Authorization Middleware for all API routes
-const authMiddleware = (req, res, next) => {
+const authMiddleware = async (req, res, next) => {
   const authHeader = req.headers['authorization'] || '';
-  const activePassword = config.DASHBOARD_PASSWORD || 'admin';
   
-  if (authHeader !== activePassword) {
-    return res.status(401).json({ success: false, error: 'Unauthorized: Invalid password' });
+  try {
+    const session = await authService.validateSession(authHeader);
+    if (!session) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: Invalid or expired session' });
+    }
+    
+    req.user = session; // Append user session (username) to req
+    next();
+  } catch (err) {
+    logger.error('Error verifying auth session:', err.message);
+    res.status(500).json({ success: false, error: 'Internal auth verification error' });
   }
-  next();
 };
 
 /**
- * Validate password for UI login
+ * Validate username and password for UI login, generating a secure session token
  * POST /api/login
  */
-app.post('/api/login', (req, res) => {
-  const { password } = req.body;
-  const activePassword = config.DASHBOARD_PASSWORD || 'admin';
+app.post('/api/login', async (req, res) => {
+  const { username, password } = req.body;
+  const targetUsername = username || 'admin';
   
-  if (password === activePassword) {
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ success: false, error: 'Неверный пароль' });
+  if (!password) {
+    return res.status(400).json({ success: false, error: 'Пароль обязателен' });
+  }
+  
+  try {
+    const isValid = await authService.authenticateUser(targetUsername, password);
+    if (isValid) {
+      const token = await authService.createSession(targetUsername);
+      res.json({ success: true, token, username: targetUsername });
+    } else {
+      res.status(401).json({ success: false, error: 'Неверные логин или пароль' });
+    }
+  } catch (err) {
+    logger.error('Error during login:', err.message);
+    res.status(500).json({ success: false, error: 'Internal login processing error' });
   }
 });
 
@@ -83,18 +102,29 @@ app.get('/api/settings', authMiddleware, (req, res) => {
  * Save new configuration settings live to settings.json
  * POST /api/settings
  */
-app.post('/api/settings', authMiddleware, (req, res) => {
+app.post('/api/settings', authMiddleware, async (req, res) => {
   const newSettings = req.body;
   if (!newSettings) {
     return res.status(400).json({ success: false, error: 'Empty settings payload' });
   }
 
-  const success = config.saveSettings(newSettings);
-  if (success) {
-    logger.info('System settings successfully updated dynamically via web dashboard.');
-    res.json({ success: true, message: 'Settings saved successfully.' });
-  } else {
-    res.status(500).json({ success: false, error: 'Failed to write settings file to disk.' });
+  try {
+    // If password is updated in system parameters, save and hash in postgres users table
+    if (newSettings.DASHBOARD_PASSWORD) {
+      const username = req.user ? req.user.username : 'admin';
+      await authService.updateUserPassword(username, newSettings.DASHBOARD_PASSWORD);
+    }
+
+    const success = await config.saveSettings(newSettings);
+    if (success) {
+      logger.info('System settings successfully updated dynamically via web dashboard.');
+      res.json({ success: true, message: 'Settings saved successfully.' });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to write settings file to disk.' });
+    }
+  } catch (err) {
+    logger.error('Error updating settings:', err.message);
+    res.status(500).json({ success: false, error: 'Internal server error while saving settings.' });
   }
 });
 
