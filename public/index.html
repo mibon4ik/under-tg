@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Настройки системы отчетов продаж</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="glowing-bg"></div>
+  
+  <div class="container">
+    <header class="app-header">
+      <div class="logo-wrapper">
+        <span class="logo-emoji">⚡</span>
+        <h1>Панель управления отчетами</h1>
+      </div>
+      <p class="subtitle">Быстрая настройка интеграций Telegram и Google Таблиц в реальном времени</p>
+    </header>
+
+    <div class="server-config-card">
+      <div class="card-header">
+        <span class="indicator-dot active"></span>
+        <h2>1. Подключение к серверу API</h2>
+      </div>
+      <p class="description">Укажите адрес вашего сервера на Railway (или оставьте текущий, если открыто напрямую).</p>
+      <div class="input-group">
+        <label for="apiUrl">Адрес сервера API</label>
+        <input type="url" id="apiUrl" placeholder="https://your-service.up.railway.app" value="">
+        <span class="input-hint">Сохраняется только в браузере. Используется для отправки запросов.</span>
+      </div>
+    </div>
+
+    <form id="settingsForm" class="settings-form">
+      <div class="cards-grid">
+        <!-- Telegram Section -->
+        <div class="card telegram-card">
+          <div class="card-title-bar">
+            <span class="card-icon">💬</span>
+            <h3>Настройки Telegram</h3>
+          </div>
+          
+          <div class="input-group">
+            <label for="botToken">Токен бота Telegram (BOT_TOKEN)</label>
+            <input type="password" id="botToken" required placeholder="7123456789:ABCdefGhIJKlmNoPQRStUvWxYz">
+            <span class="input-hint">Получить в Telegram у @BotFather</span>
+          </div>
+
+          <div class="input-group">
+            <label for="chatId">ID чатов получателей (CHAT_ID)</label>
+            <input type="text" id="chatId" required placeholder="-1001234567890, 987654321">
+            <span class="input-hint">Через запятую, если несколько чатов или пользователей</span>
+          </div>
+
+          <div class="card-actions">
+            <button type="button" id="btnTestTelegram" class="btn btn-secondary">
+              <span class="btn-text">Проверить Telegram</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Google Sheets Section -->
+        <div class="card sheets-card">
+          <div class="card-title-bar">
+            <span class="card-icon">📊</span>
+            <h3>Интеграция с таблицами</h3>
+          </div>
+
+          <div class="input-group">
+            <label for="appsScriptUrl">Apps Script URL (Основной отдел)</label>
+            <input type="url" id="appsScriptUrl" required placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+            <span class="input-hint">Отдел продлений и отмен (Code.gs)</span>
+          </div>
+
+          <div class="input-group">
+            <label for="appsScriptUrlOp1">Apps Script URL (Отдел ОП1)</label>
+            <input type="url" id="appsScriptUrlOp1" required placeholder="https://script.google.com/macros/s/AKfycb.../exec">
+            <span class="input-hint">Отдел общих продаж (Code_OP1.gs)</span>
+          </div>
+
+          <div class="card-actions">
+            <button type="button" id="btnTestSheets" class="btn btn-secondary">
+              <span class="btn-text">Проверить Таблицы</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- System Settings Section -->
+        <div class="card system-card full-width">
+          <div class="card-title-bar">
+            <span class="card-icon">⚙️</span>
+            <h3>Системные параметры</h3>
+          </div>
+
+          <div class="inputs-row">
+            <div class="input-group">
+              <label for="timezone">Часовой пояс (TIMEZONE)</label>
+              <input type="text" id="timezone" required placeholder="Asia/Almaty">
+              <span class="input-hint">Используется для расписания отчетов (например, Asia/Almaty)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-submit-bar">
+        <button type="submit" id="btnSave" class="btn btn-primary">
+          <span class="btn-text">Сохранить настройки</span>
+          <span class="spinner"></span>
+        </button>
+      </div>
+    </form>
+
+    <footer class="app-footer">
+      <p>Система отчетов продаж &copy; 2026. Разработано с заботой. ⚡</p>
+    </footer>
+  </div>
+
+  <!-- Toast Notification System -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="script.js"></script>
+</body>
+</html>
