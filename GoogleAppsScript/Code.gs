@@ -57,26 +57,25 @@ function doGet(e) {
     var monthIndex = parts[1] || '05';
     var monthName = months[monthIndex] || 'Май';
     
-    // Динамически вычисляем имена необходимых листов
-    var resolvedSheetsList = [
-      'Общие продажи ' + monthName + ' (Продления)',
-      'Общие продажи ' + monthName + ' (Отмены)'
-    ];
-    
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (!ss) {
       return crmJson_({ ok: false, error: 'spreadsheet_not_found' });
     }
     
     var result = {};
+    var sheets = ss.getSheets();
+    var lowerMonth = monthName.toLowerCase();
     
-    resolvedSheetsList.forEach(function(sheetName) {
-      var sh = ss.getSheetByName(sheetName);
-      if (sh) {
-        var range = sh.getDataRange();
-        result[sheetName] = range ? range.getDisplayValues() : [];
-      } else {
-        result[sheetName] = [];
+    sheets.forEach(function(sh) {
+      var name = sh.getName();
+      var lowerName = name.toLowerCase();
+      
+      // Проверяем, что имя листа содержит имя месяца и ключевые слова продлен/отмен
+      if (lowerName.indexOf(lowerMonth) !== -1) {
+        if (lowerName.indexOf('продлен') !== -1 || lowerName.indexOf('отмен') !== -1) {
+          var range = sh.getDataRange();
+          result[name] = range ? range.getDisplayValues() : [];
+        }
       }
     });
     
@@ -174,7 +173,8 @@ function aggregateSalesData(spreadsheet, targetDateStr) {
     'Продления Повторка': { name: 'Продления Повторка', gross: 0, sales: 0, avgCheck: 0, order: 3, type: 'standard' },
     'Сарафанка': { name: 'Сарафанка', gross: 0, sales: 0, avgCheck: 0, order: 4, type: 'standard' },
     'Форсировка': { name: 'Форсировка', gross: 0, sales: 0, avgCheck: 0, order: 5, type: 'standard' },
-    'Отмены': { name: 'Отмены', gross: 0, sales: 0, avgCheck: 0, order: 6, type: 'standard' }
+    'Доплата / Предоплата': { name: 'Доплата / Предоплата', gross: 0, sales: 0, avgCheck: 0, order: 6, type: 'standard' },
+    'Отмены': { name: 'Отмены', gross: 0, sales: 0, avgCheck: 0, order: 7, type: 'standard' }
   };
 
   // Динамическое определение имен листов на основе месяца даты отчета
@@ -186,102 +186,110 @@ function aggregateSalesData(spreadsheet, targetDateStr) {
   const dateParts = targetDateStr.split('.');
   const monthIndex = dateParts[1] || '05';
   const monthName = months[monthIndex] || 'Май';
-  const resolvedSheetsList = [
-    'Общие продажи ' + monthName + ' (Продления)',
-    'Общие продажи ' + monthName + ' (Отмены)'
-  ];
-
-  resolvedSheetsList.forEach(function(sheetName) {
-    const sheet = spreadsheet.getSheetByName(sheetName);
-    if (!sheet) {
-      Logger.log('Предупреждение: Лист "' + sheetName + '" не найден.');
-      return;
-    }
-
-    const range = sheet.getDataRange();
-    if (!range) return;
-
-    const values = range.getValues();
-    if (values.length <= 1) return; // Пустой лист или только шапка
-
-    let sheetHasDataForDay = false;
-    const normalizedSheetName = sheetName.toLowerCase();
-
-    // Цикл по всем строкам (пропускаем заголовок i = 0)
-    for (let i = 1; i < values.length; i++) {
-      const row = values[i];
-      if (!row || row.length < 11) continue;
-
-      // H - Дата (Индекс 7)
-      const dateCell = row[7];
-      if (!dateCell) continue;
-
-      // Нормализуем дату в формат dd.MM.yyyy для сравнения
-      let dateStr = '';
-      if (dateCell instanceof Date) {
-        // Если ячейка является объектом Date
-        dateStr = Utilities.formatDate(dateCell, 'GMT', 'dd.MM.yyyy');
-      } else {
-        // Если это строка
-        dateStr = String(dateCell).trim();
+  
+  const sheets = spreadsheet.getSheets();
+  const lowerMonth = monthName.toLowerCase();
+  
+  sheets.forEach(function(sheet) {
+    const sheetName = sheet.getName();
+    const lowerName = sheetName.toLowerCase();
+    
+    // Ищем листы текущего месяца с нужными ключевыми словами
+    if (lowerName.indexOf(lowerMonth) !== -1) {
+      var isTargetSheet = false;
+      if (lowerName.indexOf('продлен') !== -1 || lowerName.indexOf('отмен') !== -1) {
+        isTargetSheet = true;
       }
+      
+      if (!isTargetSheet) return;
+      
+      const range = sheet.getDataRange();
+      if (!range) return;
 
-      if (dateStr !== targetDateStr) continue;
+      const values = range.getValues();
+      if (values.length <= 1) return; // Пустой лист или только шапка
 
-      // J - ВАЛ (Индекс 9)
-      const grossVal = parseCellNumber(row[9]);
-      if (grossVal <= 0) continue;
+      let sheetHasDataForDay = false;
+      const normalizedSheetName = sheetName.toLowerCase();
 
-      sheetHasDataForDay = true;
-      totalGross += grossVal;
-      totalSalesCount++;
+      // Цикл по всем строкам (пропускаем заголовок i = 0)
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        if (!row || row.length < 11) continue;
 
-      // K - ДОГОВОР (Индекс 10)
-      const contractStr = normalizeString(row[10]);
-      const isDvd = (contractStr === 'оферта отправлена');
-      if (isDvd) {
-        totalDvdCount++;
-      }
+        // H - Дата (Индекс 7)
+        const dateCell = row[7];
+        if (!dateCell) continue;
 
-      // Определяем категорию на основе имени листа и источника лида
-      let categoryKey = null;
-
-      if (normalizedSheetName.indexOf('отмен') !== -1) {
-        // Правило: Все строки на листе Отмены относятся к категории Отмены
-        categoryKey = 'Отмены';
-      } else {
-        // Обычные категории активных продаж с листа Продлений
-        const leadSource = normalizeString(row[3]); // D - ОТКУДА ЛИД (Индекс 3)
-
-        if (leadSource === 'улица') {
-          categoryKey = 'УЛИЦА';
-        } else if (leadSource.indexOf('мвм') !== -1) {
-          categoryKey = 'Продления МВМ';
-        } else if (leadSource.indexOf('повторка') !== -1) {
-          categoryKey = 'Продления Повторка';
-        } else if (leadSource.indexOf('сарафанка') !== -1) {
-          categoryKey = 'Сарафанка';
-        } else if (leadSource.indexOf('форсировка') !== -1) {
-          categoryKey = 'Форсировка';
+        // Нормализуем дату в формат dd.MM.yyyy для сравнения
+        let dateStr = '';
+        if (dateCell instanceof Date) {
+          // Если ячейка является объектом Date
+          dateStr = Utilities.formatDate(dateCell, 'GMT', 'dd.MM.yyyy');
+        } else {
+          // Если это строка
+          dateStr = String(dateCell).trim();
         }
-      }
 
-      if (categoryKey) {
-        const cat = categories[categoryKey];
-        cat.gross += grossVal;
-        cat.sales++;
+        if (dateStr !== targetDateStr) continue;
 
-        if (cat.type === 'street') {
-          cat.entered++;
-          if (isDvd) {
-            cat.dvd++;
+        // J - ВАЛ (Индекс 9)
+        const grossVal = parseCellNumber(row[9]);
+        if (grossVal <= 0) continue;
+
+        sheetHasDataForDay = true;
+        totalGross += grossVal;
+        totalSalesCount++;
+
+        // K - ДОГОВОР (Индекс 10)
+        const contractStr = normalizeString(row[10]);
+        const isDvd = (contractStr === 'оферта отправлена');
+        if (isDvd) {
+          totalDvdCount++;
+        }
+
+        // Определяем категорию на основе имени листа и источника лида
+        let categoryKey = null;
+
+        if (normalizedSheetName.indexOf('отмен') !== -1) {
+          // Правило: Все строки на листе Отмены относятся к категории Отмены
+          categoryKey = 'Отмены';
+        } else {
+          // Обычные категории активных продаж с листа Продлений
+          const leadSource = normalizeString(row[3]); // D - ОТКУДА ЛИД (Индекс 3)
+
+          if (leadSource === 'улица') {
+            categoryKey = 'УЛИЦА';
+          } else if (leadSource.indexOf('мвм') !== -1) {
+            categoryKey = 'Продления МВМ';
+          } else if (leadSource.indexOf('повторка') !== -1) {
+            categoryKey = 'Продления Повторка';
+          } else if (leadSource.indexOf('сарафанка') !== -1) {
+            categoryKey = 'Сарафанка';
+          } else if (leadSource.indexOf('форсировка') !== -1) {
+            categoryKey = 'Форсировка';
+          } else if (leadSource.indexOf('доплат') !== -1 || leadSource.indexOf('предоплат') !== -1) {
+            categoryKey = 'Доплата / Предоплата';
+          }
+        }
+
+        if (categoryKey) {
+          const cat = categories[categoryKey];
+          cat.gross += grossVal;
+          cat.sales++;
+
+          if (cat.type === 'street') {
+            cat.entered++;
+            if (isDvd) {
+              cat.dvd++;
+            }
           }
         }
       }
-    }
 
-    if (sheetHasDataForDay) {
-      activeSheets.push(sheetName);
+      if (sheetHasDataForDay) {
+        activeSheets.push(sheetName);
+      }
     }
   });
 
@@ -293,8 +301,14 @@ function aggregateSalesData(spreadsheet, targetDateStr) {
     cat.avgCheck = cat.sales > 0 ? (cat.gross / cat.sales) : 0;
   }
 
+  // Если не нашли активных листов, возвращаем дефолтные имена для красивого заголовка
+  var fallbackSheets = [
+    'Общие продажи ' + monthName + ' (Продления)',
+    'Общие продажи ' + monthName + ' (Отмены)'
+  ];
+
   return {
-    activeSheets: activeSheets.length > 0 ? activeSheets : resolvedSheetsList,
+    activeSheets: activeSheets.length > 0 ? activeSheets : fallbackSheets,
     totalGross: totalGross,
     totalSalesCount: totalSalesCount,
     averageCheck: overallAvgCheck,

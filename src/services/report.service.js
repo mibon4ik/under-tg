@@ -166,12 +166,20 @@ class ReportService {
         order: 5,
         type: 'standard'
       },
+      'Доплата / Предоплата': {
+        name: 'Доплата / Предоплата',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 6,
+        type: 'standard'
+      },
       'Отмены': {
         name: 'Отмены',
         gross: 0,
         sales: 0,
         avgCheck: 0,
-        order: 6,
+        order: 7,
         type: 'standard'
       }
     };
@@ -235,6 +243,8 @@ class ReportService {
             categoryKey = 'Сарафанка';
           } else if (leadSource.includes('форсировка')) {
             categoryKey = 'Форсировка';
+          } else if (leadSource.includes('доплат') || leadSource.includes('предоплат')) {
+            categoryKey = 'Доплата / Предоплата';
           }
         }
 
