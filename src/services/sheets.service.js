@@ -40,7 +40,11 @@ class SheetsService {
       logger.info(`Fetching spreadsheet data via Apps Script Web App for date: ${targetDateStr}...`);
       
       const response = await axios.get(webAppUrl, {
-        params: { date: targetDateStr },
+        params: { 
+          date: targetDateStr,
+          sheetProd: config.SHEET_PROD || '',
+          sheetOtmen: config.SHEET_OTMEN || ''
+        },
         timeout: 25000 // 25s timeout for Google Apps Script execution limits
       });
 

@@ -386,7 +386,10 @@ class ReportService {
     try {
       logger.info(`Fetching OP1 spreadsheet data for date: ${dateToProcess}...`);
       const response = await axios.get(webAppUrlOP1, {
-        params: { date: dateToProcess },
+        params: { 
+          date: dateToProcess,
+          sheetOp1: config.SHEET_OP1 || ''
+        },
         timeout: 25000 // 25s timeout for Google Apps Script execution limits
       });
 

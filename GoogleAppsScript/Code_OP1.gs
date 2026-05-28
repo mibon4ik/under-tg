@@ -25,6 +25,7 @@ function doGet(e) {
     var p = e && e.parameter ? e.parameter : {};
     var action = p.action || '';
     var date = p.date || '';
+    var sheetOp1 = p.sheetOp1 || '';
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (!ss) {
@@ -39,38 +40,46 @@ function doGet(e) {
       return crmJson_({ ok: true, sheets: sheetsList });
     }
     
-    var months = {
-      '01': 'Январь', '02': 'Февраль', '03': 'Март', '04': 'Апрель',
-      '05': 'Май', '06': 'Июнь', '07': 'Июль', '08': 'Август',
-      '09': 'Сентябрь', '10': 'Октябрь', '11': 'Ноябрь', '12': 'Декабрь'
-    };
-    
-    // Если дата не передана, берем текущую дату по времени Almaty
-    var targetDate = date || Utilities.formatDate(new Date(), 'Asia/Almaty', 'dd.MM.yyyy');
-    var parts = targetDate.split('.');
-    var monthIndex = parts[1] || '05';
-    var monthName = months[monthIndex] || 'Май';
-    
     var result = {};
-    var sheets = ss.getSheets();
-    var lowerMonth = monthName.toLowerCase();
     
-    sheets.forEach(function(sh) {
-      var name = sh.getName();
-      var lowerName = name.toLowerCase();
-      
-      // Ищем листы, содержащие имя месяца, исключая листы продлений/отмен другого отдела
-      if (lowerName.indexOf(lowerMonth) !== -1) {
-        if (lowerName.indexOf('продлен') === -1 && lowerName.indexOf('отмен') === -1) {
-          var range = sh.getDataRange();
-          result[name] = range ? range.getDisplayValues() : [];
-        }
+    // Если передан конкретный лист из настроек веб-панели
+    if (sheetOp1) {
+      var shO = ss.getSheetByName(sheetOp1);
+      if (shO) {
+        result[sheetOp1] = shO.getDataRange() ? shO.getDataRange().getDisplayValues() : [];
       }
-    });
+    } else {
+      // Иначе ищем автоматически по месяцу
+      var months = {
+        '01': 'Январь', '02': 'Февраль', '03': 'Март', '04': 'Апрель',
+        '05': 'Май', '06': 'Июнь', '07': 'Июль', '08': 'Август',
+        '09': 'Сентябрь', '10': 'Октябрь', '11': 'Ноябрь', '12': 'Декабрь'
+      };
+      
+      var targetDate = date || Utilities.formatDate(new Date(), 'Asia/Almaty', 'dd.MM.yyyy');
+      var parts = targetDate.split('.');
+      var monthIndex = parts[1] || '05';
+      var monthName = months[monthIndex] || 'Май';
+      
+      var sheets = ss.getSheets();
+      var lowerMonth = monthName.toLowerCase();
+      
+      sheets.forEach(function(sh) {
+        var name = sh.getName();
+        var lowerName = name.toLowerCase();
+        
+        if (lowerName.indexOf(lowerMonth) !== -1) {
+          if (lowerName.indexOf('продлен') === -1 && lowerName.indexOf('отмен') === -1) {
+            var range = sh.getDataRange();
+            result[name] = range ? range.getDisplayValues() : [];
+          }
+        }
+      });
+    }
     
     return crmJson_({
       ok: true,
-      date: targetDate,
+      date: date || Utilities.formatDate(new Date(), 'Asia/Almaty', 'dd.MM.yyyy'),
       data: result
     });
   } catch (err) {
