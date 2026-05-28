@@ -37,9 +37,24 @@ document.addEventListener('DOMContentLoaded', () => {
   let activeToken = localStorage.getItem('dashboard_token') || localStorage.getItem('dashboard_password') || '';
   let activeSettings = null; // Store fetched settings globally
   
+  // Helper to sanitize and normalize server URLs (prevent relative-path issues)
+  function cleanUrl(url) {
+    if (!url) return '';
+    let cleaned = url.trim();
+    if (!cleaned.startsWith('http://') && !cleaned.startsWith('https://')) {
+      cleaned = 'https://' + cleaned;
+    }
+    if (cleaned.endsWith('/')) {
+      cleaned = cleaned.slice(0, -1);
+    }
+    return cleaned;
+  }
+
   // 1. Resolve and Save Backend Server URL (for Vercel cross-origin support)
   let savedApiUrl = localStorage.getItem('api_server_url') || '';
-  if (!savedApiUrl) {
+  if (savedApiUrl) {
+    savedApiUrl = cleanUrl(savedApiUrl);
+  } else {
     savedApiUrl = window.location.origin;
     if (savedApiUrl.includes('localhost') || savedApiUrl.includes('127.0.0.1')) {
       savedApiUrl = 'http://localhost:3000';
@@ -51,10 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   apiUrlInput.addEventListener('change', () => {
-    let url = apiUrlInput.value.trim();
-    if (url.endsWith('/')) {
-      url = url.slice(0, -1);
-    }
+    let url = cleanUrl(apiUrlInput.value);
     apiUrlInput.value = url;
     if (loginApiUrlInput) {
       loginApiUrlInput.value = url;
@@ -66,10 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (loginApiUrlInput) {
     loginApiUrlInput.addEventListener('change', () => {
-      let url = loginApiUrlInput.value.trim();
-      if (url.endsWith('/')) {
-        url = url.slice(0, -1);
-      }
+      let url = cleanUrl(loginApiUrlInput.value);
       loginApiUrlInput.value = url;
       apiUrlInput.value = url;
       localStorage.setItem('api_server_url', url);
@@ -78,7 +87,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getEndpoint(path) {
-    const base = apiUrlInput.value.trim() || window.location.origin;
+    const rawBase = apiUrlInput.value.trim() || window.location.origin;
+    const base = cleanUrl(rawBase);
     return `${base}${path}`;
   }
 
