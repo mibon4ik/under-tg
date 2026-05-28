@@ -133,11 +133,14 @@ class TelegramService {
           `Я настроен присылать ежедневный отчет в 21:00.\n` +
           `Но вы можете запросить показатели на данный момент в любое время с помощью кнопок меню! 👇`;
         
-        // Define a native Reply Keyboard with two buttons
+        // Define a native Reply Keyboard with three buttons
         const replyMarkup = {
           keyboard: [
             [{ text: '📊 Получить актуальный отчет' }],
-            [{ text: '💰 Валовая прибыль за сегодня' }]
+            [
+              { text: '💰 Валовая прибыль за сегодня' },
+              { text: '💰 Валовая прибыль ОП1' }
+            ]
           ],
           resize_keyboard: true,
           one_time_keyboard: false
@@ -177,7 +180,7 @@ class TelegramService {
       }
 
       // 3. Command: /profit or button "💰 Валовая прибыль за сегодня"
-      if (normalizedText === '/profit' || normalizedText === '💰 валовая прибыль за сегодня' || normalizedText.includes('валовая прибыль')) {
+      if (normalizedText === '/profit' || normalizedText === '💰 валовая прибыль за сегодня' || normalizedText.includes('прибыль за сегодня')) {
         logger.info(`User ${chatId} requested instant gross profit totals.`);
 
         // Send a temporary "loading" notice
@@ -204,12 +207,35 @@ class TelegramService {
         return;
       }
 
+      // 3.1. Command: /profit_op1 or button "💰 Валовая прибыль ОП1"
+      if (normalizedText === '/profit_op1' || normalizedText === '💰 валовая прибыль оп1' || normalizedText.includes('прибыль оп1')) {
+        logger.info(`User ${chatId} requested OP1 gross profit.`);
+
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблице ОП1 и рассчитываю прибыль...');
+
+        try {
+          const reportService = require('./report.service');
+          const profitText = await reportService.getGrossProfitOP1();
+          await this.sendMessage(chatId, profitText);
+          logger.info(`OP1 gross profit response successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate OP1 profit response: ${innerError.message}`);
+          await this.sendMessage(
+            chatId, 
+            `⚠️ Ошибка при расчете прибыли ОП1:\n${innerError.message}\n\n` +
+            `Пожалуйста, убедитесь, что Google Apps Script Web App для ОП1 опубликован и доступен по адресу APPS_SCRIPT_URL_OP1.`
+          );
+        }
+        return;
+      }
+
       // 4. Fallback for other text inputs
       const fallbackText = 
         `💡 Я понимаю только специальные команды.\n\n` +
         `Используйте кнопки меню:\n` +
         `• **📊 Получить актуальный отчет**\n` +
-        `• **💰 Валовая прибыль за сегодня**`;
+        `• **💰 Валовая прибыль за сегодня**\n` +
+        `• **💰 Валовая прибыль ОП1**`;
       
       await this.sendMessage(chatId, fallbackText);
     } catch (err) {

@@ -21,4 +21,5 @@ module.exports = {
     MODE: process.env.TELEGRAM_MODE || 'webhook',
   },
   APPS_SCRIPT_URL: process.env.APPS_SCRIPT_URL || '',
+  APPS_SCRIPT_URL_OP1: process.env.APPS_SCRIPT_URL_OP1 || '',
 };

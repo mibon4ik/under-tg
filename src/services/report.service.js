@@ -1,3 +1,5 @@
+const axios = require('axios');
+const config = require('../config/config');
 const sheetsService = require('./sheets.service');
 const telegramService = require('./telegram.service');
 const formatter = require('../utils/formatter');
@@ -350,6 +352,95 @@ class ReportService {
     msg += `Отчет сформирован автоматически`;
 
     return msg;
+  }
+
+  /**
+   * Fetches data from the OP1 spreadsheet and calculates its gross profit.
+   * Calculates both today's gross and total accumulated month-to-date gross.
+   * @param {string} [targetDateStr] - Format "dd.MM.yyyy"
+   * @returns {Promise<string>} Fully formatted gross profit message for OP1.
+   */
+  async getGrossProfitOP1(targetDateStr = null) {
+    const dateToProcess = targetDateStr || formatter.formatDate(new Date());
+    const webAppUrlOP1 = config.APPS_SCRIPT_URL_OP1;
+
+    if (!webAppUrlOP1) {
+      logger.error('OP1 Google Apps Script Web App URL (APPS_SCRIPT_URL_OP1) is not configured.');
+      return `⚠️ Ссылка для подключения к таблице ОП1 (APPS_SCRIPT_URL_OP1) не настроена в файле .env.`;
+    }
+
+    try {
+      logger.info(`Fetching OP1 spreadsheet data for date: ${dateToProcess}...`);
+      const response = await axios.get(webAppUrlOP1, {
+        params: { date: dateToProcess },
+        timeout: 25000 // 25s timeout for Google Apps Script execution limits
+      });
+
+      if (response.data && response.data.ok) {
+        logger.info('OP1 spreadsheet data successfully fetched.');
+        const rawData = response.data.data || {};
+        
+        let todayGross = 0;
+        let todaySalesCount = 0;
+        let totalAccumulatedGross = 0;
+        let totalAccumulatedSalesCount = 0;
+        let activeSheetName = '';
+
+        for (const [sheetName, rows] of Object.entries(rawData)) {
+          if (!rows || rows.length <= 1) continue;
+          
+          activeSheetName = sheetName;
+
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < 11) continue;
+
+            // I - ДАТА (Index 8 in the second table)
+            const rowDateRaw = row[8];
+            if (!rowDateRaw) continue;
+
+            const rowDateTrimmed = String(rowDateRaw).trim();
+
+            // K - ВАЛ (Index 10 in the second table)
+            const grossVal = helpers.parseNumber(row[10]);
+            if (grossVal <= 0) continue;
+
+            // Accumulate for month-to-date
+            totalAccumulatedGross += grossVal;
+            totalAccumulatedSalesCount++;
+
+            // Accumulate for today
+            if (rowDateTrimmed === dateToProcess) {
+              todayGross += grossVal;
+              todaySalesCount++;
+            }
+          }
+        }
+
+        let msg = `💰 ВАЛОВАЯ ПРИБЫЛЬ ОП1\n\n`;
+        msg += `Дата: ${dateToProcess}\n`;
+        if (activeSheetName) {
+          msg += `Лист: ${activeSheetName}\n`;
+        }
+        msg += `\n`;
+        msg += `📈 За сегодня:\n`;
+        msg += `• Вал: ${formatter.formatCurrency(todayGross)}\n`;
+        msg += `• Продажи: ${todaySalesCount}\n\n`;
+        msg += `🏆 Всего за месяц:\n`;
+        msg += `• Общий вал: ${formatter.formatCurrency(totalAccumulatedGross)}\n`;
+        msg += `• Всего сделок: ${totalAccumulatedSalesCount}\n\n`;
+        msg += `Отчет сформирован автоматически`;
+
+        return msg;
+      } else {
+        const errMsg = response.data ? response.data.error : 'unknown error';
+        logger.error(`Apps Script Web App for OP1 returned an error: ${errMsg}`);
+        throw new Error(errMsg);
+      }
+    } catch (error) {
+      logger.error(`Failed to fetch or calculate OP1 gross profit: ${error.message}`);
+      return `⚠️ Ошибка при получении данных ОП1:\n${error.message}\n\nПожалуйста, проверьте APPS_SCRIPT_URL_OP1 и публикацию веб-приложения.`;
+    }
   }
 }
 
