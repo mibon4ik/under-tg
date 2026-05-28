@@ -325,9 +325,9 @@ document.addEventListener('DOMContentLoaded', () => {
       APPS_SCRIPT_URL_OP1: appsScriptUrlOp1Input.value.trim(),
       TIMEZONE: timezoneInput.value.trim(),
       DASHBOARD_PASSWORD: dashboardPasswordInput.value.trim(),
-      SHEET_PROD: selectSheetProd.value || '',
-      SHEET_OTMEN: selectSheetOtmen.value || '',
-      SHEET_OP1: selectSheetOp1.value || ''
+      SHEET_PROD: selectSheetProd.value || (activeSettings ? activeSettings.SHEET_PROD : ''),
+      SHEET_OTMEN: selectSheetOtmen.value || (activeSettings ? activeSettings.SHEET_OTMEN : ''),
+      SHEET_OP1: selectSheetOp1.value || (activeSettings ? activeSettings.SHEET_OP1 : '')
     };
 
     try {
