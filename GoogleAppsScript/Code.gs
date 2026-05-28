@@ -68,13 +68,25 @@ function doGet(e) {
       if (sheetProd) {
         var shP = ss.getSheetByName(sheetProd);
         if (shP) {
-          result[sheetProd] = shP.getDataRange() ? shP.getDataRange().getDisplayValues() : [];
+          var lastRowP = shP.getLastRow();
+          var lastColP = shP.getLastColumn();
+          if (lastRowP > 0 && lastColP > 0) {
+            result[sheetProd] = shP.getRange(1, 1, lastRowP, lastColP).getDisplayValues();
+          } else {
+            result[sheetProd] = [];
+          }
         }
       }
       if (sheetOtmen) {
         var shO = ss.getSheetByName(sheetOtmen);
         if (shO) {
-          result[sheetOtmen] = shO.getDataRange() ? shO.getDataRange().getDisplayValues() : [];
+          var lastRowO = shO.getLastRow();
+          var lastColO = shO.getLastColumn();
+          if (lastRowO > 0 && lastColO > 0) {
+            result[sheetOtmen] = shO.getRange(1, 1, lastRowO, lastColO).getDisplayValues();
+          } else {
+            result[sheetOtmen] = [];
+          }
         }
       }
     } else {
@@ -99,8 +111,13 @@ function doGet(e) {
         
         if (lowerName.indexOf(lowerMonth) !== -1) {
           if (lowerName.indexOf('продлен') !== -1 || lowerName.indexOf('отмен') !== -1) {
-            var range = sh.getDataRange();
-            result[name] = range ? range.getDisplayValues() : [];
+            var lastRowSh = sh.getLastRow();
+            var lastColSh = sh.getLastColumn();
+            if (lastRowSh > 0 && lastColSh > 0) {
+              result[name] = sh.getRange(1, 1, lastRowSh, lastColSh).getDisplayValues();
+            } else {
+              result[name] = [];
+            }
           }
         }
       });
