@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginForm = document.getElementById('loginForm');
   const loginUsernameInput = document.getElementById('loginUsername');
   const loginPasswordInput = document.getElementById('loginPassword');
+  const loginApiUrlInput = document.getElementById('loginApiUrl');
   const btnLogin = document.getElementById('btnLogin');
   
   const mainContent = document.getElementById('mainContent');
@@ -45,6 +46,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
   apiUrlInput.value = savedApiUrl;
+  if (loginApiUrlInput) {
+    loginApiUrlInput.value = savedApiUrl;
+  }
 
   apiUrlInput.addEventListener('change', () => {
     let url = apiUrlInput.value.trim();
@@ -52,10 +56,26 @@ document.addEventListener('DOMContentLoaded', () => {
       url = url.slice(0, -1);
     }
     apiUrlInput.value = url;
+    if (loginApiUrlInput) {
+      loginApiUrlInput.value = url;
+    }
     localStorage.setItem('api_server_url', url);
     showToast('Сервер API', 'Адрес сервера обновлен. Переподключение...', 'success');
     checkAuthAndLoad();
   });
+
+  if (loginApiUrlInput) {
+    loginApiUrlInput.addEventListener('change', () => {
+      let url = loginApiUrlInput.value.trim();
+      if (url.endsWith('/')) {
+        url = url.slice(0, -1);
+      }
+      loginApiUrlInput.value = url;
+      apiUrlInput.value = url;
+      localStorage.setItem('api_server_url', url);
+      showToast('Сервер API', 'Адрес сервера обновлен.', 'success');
+    });
+  }
 
   function getEndpoint(path) {
     const base = apiUrlInput.value.trim() || window.location.origin;

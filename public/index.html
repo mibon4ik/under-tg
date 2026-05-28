@@ -17,11 +17,18 @@
     <div class="login-card">
       <div class="login-logo">🔒</div>
       <h2>Авторизация</h2>
-      <p>Пожалуйста, введите имя пользователя и пароль для доступа к панели</p>
+      <p>Пожалуйста, введите данные для доступа к панели управления</p>
+      
+      <!-- API Server URL Input inside Login Card -->
+      <div class="input-group" style="text-align: left; margin-bottom: 16px;">
+        <label for="loginApiUrl" style="color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; display: block; margin-bottom: 6px;">Адрес сервера API (Railway)</label>
+        <input type="url" id="loginApiUrl" placeholder="https://your-service.up.railway.app" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #fff; padding: 12px; border-radius: 8px; width: 100%; box-sizing: border-box; font-family: inherit; font-size: 0.9rem;">
+      </div>
+
       <form id="loginForm" class="login-form">
         <div class="input-group">
           <label for="loginUsername">Логин</label>
-          <input type="text" id="loginUsername" placeholder="Введите логин..." required value="admin" autofocus>
+          <input type="text" id="loginUsername" placeholder="Введите логин..." required value="admin">
         </div>
         <div class="input-group">
           <label for="loginPassword">Пароль</label>
