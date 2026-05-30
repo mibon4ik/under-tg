@@ -534,6 +534,50 @@ function getRnpSheetRows_(ss, sheetRnp) {
   return sheet.getDataRange().getDisplayValues();
 }
 
+/**
+ * Dynamically detects all manager names present in column A of the RNP sheet.
+ * Skips known system headers, months, years, and formatting rules.
+ */
+function detectRnpManagers_(rows) {
+  var managers = [];
+  var systemHeaders = [
+    'У', '10% отклонения от плана как норма', 'Чем больше, тем лучше', 'Чем меньше, тем лучше',
+    'ПРОДЛЕНИЕ МВМ Зеленые', 'ПРОДЛЕНИЕ МВМ Желтые', 'ПРОДЛЕНИЕ МВМ Красные', 'УЛИЦА', 'ОТМЕНЫ',
+    'ПРОДЛЕНИЕ ПОВТОРКА', 'ПРОДЛЕНИЕ ФОРСИРОВКА', 'ПРОДАЖИ ПО ПРОДУКТАМ', 'ПРОДАЖИ ОП 2 ИТОГО',
+    'Шаблоны строк', 'Ключевые метрики', 'Результаты за неделю', 'Средний чек', 'Кол-во оплат итого ОП 2',
+    'Сумма оплат итого ОП 2', 'Кол-во дней в месяце'
+  ];
+  var months = [
+    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
+    'январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'
+  ];
+
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.length === 0) continue;
+    var col0 = row[0] ? row[0].trim() : '';
+    if (!col0) continue;
+    
+    // Ignore years (e.g. 2026)
+    if (/^\d{4}$/.test(col0)) continue;
+    
+    // Ignore dates and percentage symbols
+    if (col0.indexOf('%') !== -1 || /^\d{2}\.\d{2}\.\d{4}$/.test(col0)) continue;
+    
+    // Ignore specific headers
+    if (systemHeaders.indexOf(col0) !== -1) continue;
+    if (months.indexOf(col0) !== -1) continue;
+    if (col0.indexOf('отклонения') !== -1 || col0.indexOf('Шаблоны') !== -1 || col0.indexOf('больше') !== -1 || col0.indexOf('меньше') !== -1 || col0.indexOf('Результаты') !== -1 || col0.indexOf('Итого') !== -1) {
+      continue;
+    }
+    
+    if (managers.indexOf(col0) === -1) {
+      managers.push(col0);
+    }
+  }
+  return managers;
+}
+
 function getRnpReportingStatusText_(ss, targetDate, sheetRnp) {
   var rows = getRnpSheetRows_(ss, sheetRnp);
   if (!rows || rows.length < 11) {
@@ -567,7 +611,12 @@ function getRnpReportingStatusText_(ss, targetDate, sheetRnp) {
     targetDate = dates[todayIdx].date;
   }
   
-  var managers = ['Адель', 'Азамат', 'Альмади', 'Мирас', 'Бахтияр', 'Амир', 'Салтанат', 'Айбат', 'Катя', 'Маржан', 'Томирис', 'Наргиз', 'Менеджер 21', 'Менеджер 22'];
+  // Dynamically extract managers from the sheet rows
+  var managers = detectRnpManagers_(rows);
+  if (managers.length === 0) {
+    return '⚠️ Менеджеры не найдены на листе РНП.';
+  }
+  
   var managerRows = {};
   for (var m = 0; m < managers.length; m++) {
     managerRows[managers[m]] = [];
@@ -611,8 +660,9 @@ function getRnpReportingStatusText_(ss, targetDate, sheetRnp) {
     return false;
   }
   
-  var text = '📋 *Отчет по заполнению РНП*\n';
-  text += '━━━━━━━━━━━━━━\n';
+  var text = '📋 *ОТЧЕТ ПО ЗАПОЛНЕНИЮ РНП*\n';
+  text += '_Контроль своевременности внесения метрик за последние 3 дня_\n';
+  text += '━━━━━━━━━━━━━━━━━━\n';
   
   var daysToCheck = [];
   var startIdx = Math.max(0, todayIdx - 2);
@@ -639,10 +689,26 @@ function getRnpReportingStatusText_(ss, targetDate, sheetRnp) {
     if (day.date === targetDate) dateLabel += ' (Сегодня)';
     else if (todayIdx > 0 && day.date === dates[todayIdx - 1].date) dateLabel += ' (Вчера)';
     
+    var totalCount = filledList.length + emptyList.length;
+    var pct = totalCount > 0 ? Math.round((filledList.length / totalCount) * 100) : 0;
+    
     text += '\n📅 *' + dateLabel + '*\n';
-    text += '✅ *Заполнили* (' + filledList.length + '):\n' + (filledList.length > 0 ? filledList.join(', ') : '_нет_') + '\n';
-    text += '❌ *Не заполнили* (' + emptyList.length + '):\n' + (emptyList.length > 0 ? emptyList.join(', ') : '_нет_') + '\n';
-    text += '━━━━━━━━━━━━━━\n';
+    text += '📊 Заполнено: *' + pct + '%* (' + filledList.length + ' из ' + totalCount + ')\n\n';
+    
+    text += '✅ *Заполнили вовремя:* \n';
+    if (filledList.length > 0) {
+      text += '• ' + filledList.join('\n• ') + '\n';
+    } else {
+      text += '_никто_\n';
+    }
+    
+    text += '\n❌ *Забыли заполнить:* \n';
+    if (emptyList.length > 0) {
+      text += '• *' + emptyList.join('*\n• *') + '*\n';
+    } else {
+      text += '_все заполнили!_ 🎉\n';
+    }
+    text += '━━━━━━━━━━━━━━━━━━\n';
   }
   
   return text;
@@ -680,7 +746,12 @@ function getRnpMissedDaysText_(ss, targetDate, sheetRnp) {
     todayIdx = dates.length - 1;
   }
   
-  var managers = ['Адель', 'Азамат', 'Альмади', 'Мирас', 'Бахтияр', 'Амир', 'Салтанат', 'Айбат', 'Катя', 'Маржан', 'Томирис', 'Наргиз', 'Менеджер 21', 'Менеджер 22'];
+  // Dynamically extract managers from the RNP sheet
+  var managers = detectRnpManagers_(rows);
+  if (managers.length === 0) {
+    return '⚠️ Менеджеры не найдены на листе РНП.';
+  }
+  
   var managerRows = {};
   for (var m = 0; m < managers.length; m++) {
     managerRows[managers[m]] = [];
@@ -724,8 +795,9 @@ function getRnpMissedDaysText_(ss, targetDate, sheetRnp) {
     return false;
   }
   
-  var text = '❌ *Пропуски заполнения РНП (за 14 дней)*\n';
-  text += '━━━━━━━━━━━━━━\n\n';
+  var text = '❌ *ПРОПУСКИ ЗАПОЛНЕНИЯ РНП ЗА 14 ДНЕЙ*\n';
+  text += '_Анализ дисциплины заполнения за последние две недели_\n';
+  text += '━━━━━━━━━━━━━━━━━━\n\n';
   
   var last14Days = [];
   var startIdx = Math.max(0, todayIdx - 13);
@@ -746,12 +818,13 @@ function getRnpMissedDaysText_(ss, targetDate, sheetRnp) {
     }
     
     if (missed.length > 0) {
-      text += '👤 *' + managerName + '*: пропущено ' + missed.length + ' дн. (' + missed.join(', ') + ')\n';
+      text += '👤 *' + managerName + '*: пропущено *' + missed.length + '* дн. (' + missed.join(', ') + ')\n';
     } else {
-      text += '👤 *' + managerName + '*: ✅ Все дни заполнены!\n';
+      text += '👤 *' + managerName + '*: ✅ Все дни заполнены вовремя! Отлично! 🌟\n';
     }
   }
   
-  text += '\n━━━━━━━━━━━━━━';
+  text += '\n━━━━━━━━━━━━━━━━━━\n';
+  text += '_Примечание: Пропущенные дни указаны в скобках в формате (день.месяц)._';
   return text;
 }
