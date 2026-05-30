@@ -60,6 +60,20 @@ function doGet(e) {
       });
       return crmJson_({ ok: true, sheets: sheetsList });
     }
+
+    if (action === 'rnpReportingStatus') {
+      var timezone = p.timezone || 'Asia/Almaty';
+      var targetDate = date || Utilities.formatDate(new Date(), timezone, 'dd.MM.yyyy');
+      var reportText = getRnpReportingStatusText_(ss, targetDate);
+      return crmJson_({ ok: true, text: reportText });
+    }
+    
+    if (action === 'rnpMissedDays') {
+      var timezone = p.timezone || 'Asia/Almaty';
+      var targetDate = date || Utilities.formatDate(new Date(), timezone, 'dd.MM.yyyy');
+      var reportText = getRnpMissedDaysText_(ss, targetDate);
+      return crmJson_({ ok: true, text: reportText });
+    }
     
     var result = {};
     
@@ -503,4 +517,218 @@ function formatCurrency(num) {
   // Регулярное выражение для разделения разрядов тысяч пробелом
   const formatted = rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
   return formatted + ' ₸';
+}
+
+/**
+ * -----------------------------------------------------------------------------
+ *  3. RNP REPORT GENERATION LOGIC
+ *  Parses the RNP scorecard sheet and identifies filled/unfilled manager days
+ * -----------------------------------------------------------------------------
+ */
+
+function getRnpSheetRows_(ss) {
+  var sheet = ss.getSheetByName('РНП');
+  if (!sheet) return null;
+  return sheet.getDataRange().getDisplayValues();
+}
+
+function getRnpReportingStatusText_(ss, targetDate) {
+  var rows = getRnpSheetRows_(ss);
+  if (!rows || rows.length < 11) {
+    return '⚠️ Лист "РНП" не найден или пуст.';
+  }
+  
+  var row10 = rows[9];
+  var dates = [];
+  for (var i = 0; i < row10.length; i++) {
+    var cell = row10[i] ? row10[i].trim() : '';
+    if (cell && /^\d{2}\.\d{2}\.\d{4}$/.test(cell)) {
+      dates.push({ index: i, date: cell });
+    }
+  }
+  
+  if (dates.length === 0) {
+    return '⚠️ В строке 10 листа "РНП" не найдены даты в формате ДД.ММ.ГГГГ.';
+  }
+  
+  var todayIdx = dates.findIndex(function(d) { return d.date === targetDate; });
+  if (todayIdx === -1) {
+    todayIdx = dates.length - 1;
+    targetDate = dates[todayIdx].date;
+  }
+  
+  var managers = ['Адель', 'Азамат', 'Альмади', 'Мирас', 'Бахтияр', 'Амир', 'Салтанат', 'Айбат', 'Катя', 'Маржан', 'Томирис', 'Наргиз', 'Менеджер 21', 'Менеджер 22'];
+  var managerRows = {};
+  managers.forEach(function(m) {
+    managerRows[m] = [];
+  });
+  
+  var currentManager = null;
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.length === 0) continue;
+    var col0 = row[0] ? row[0].trim() : '';
+    var col1 = row[1] ? row[1].trim() : '';
+    var col2 = row[2] ? row[2].trim() : '';
+    var col3 = row[3] ? row[3].trim() : '';
+    
+    if (col0 && managers.indexOf(col0) !== -1) {
+      currentManager = col0;
+    } else if (!col0 && !col1 && !col2 && col3 && managers.indexOf(col3) !== -1) {
+      currentManager = col3;
+    }
+    
+    if (currentManager) {
+      if (col3 && col3 !== currentManager && ['ОТМЕНЫ', 'ПРОДЛЕНИЕ МВМ Зеленые', 'ПРОДЛЕНИЕ МВМ Желтые', 'ПРОДЛЕНИЕ МВМ Красные', 'УЛИЦА', 'ПРОДЛЕНИЕ ПОВТОРКА', 'ПРОДЛЕНИЕ ФОРСИРОВКА', 'ПРОДАЖИ ПО ПРОДУКТАМ'].indexOf(col3) === -1) {
+        managerRows[currentManager].push(row);
+      }
+    }
+  }
+  
+  function isFilled(m, colIdx) {
+    var mRows = managerRows[m];
+    if (!mRows || mRows.length === 0) return false;
+    for (var j = 0; j < mRows.length; j++) {
+      var valStr = mRows[j][colIdx] ? mRows[j][colIdx].trim() : '';
+      if (valStr && valStr !== '0' && valStr !== '0.0' && valStr !== '0,0' && valStr !== '0%' && valStr !== '0,00%' && valStr.indexOf('₸0') === -1) {
+        var clean = valStr.replace(/[^\d.,-]/g, '').replace(',', '.');
+        var parsed = parseFloat(clean);
+        if (!isNaN(parsed) && parsed !== 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  
+  var text = '📋 *Отчет по заполнению РНП*\n';
+  text += '━━━━━━━━━━━━━━\n';
+  
+  var daysToCheck = [];
+  var startIdx = Math.max(0, todayIdx - 2);
+  for (var k = todayIdx; k >= startIdx; k--) {
+    daysToCheck.push(dates[k]);
+  }
+  
+  daysToCheck.forEach(function(d) {
+    var filledList = [];
+    var emptyList = [];
+    
+    managers.forEach(function(m) {
+      if (managerRows[m].length === 0) return;
+      if (isFilled(m, d.index)) {
+        filledList.push(m);
+      } else {
+        emptyList.push(m);
+      }
+    });
+    
+    var dateLabel = d.date;
+    if (d.date === targetDate) dateLabel += ' (Сегодня)';
+    else if (todayIdx > 0 && d.date === dates[todayIdx - 1].date) dateLabel += ' (Вчера)';
+    
+    text += '\n📅 *' + dateLabel + '*\n';
+    text += '✅ *Заполнили* (' + filledList.length + '):\n' + (filledList.length > 0 ? filledList.join(', ') : '_нет_') + '\n';
+    text += '❌ *Не заполнили* (' + emptyList.length + '):\n' + (emptyList.length > 0 ? emptyList.join(', ') : '_нет_') + '\n';
+    text += '━━━━━━━━━━━━━━\n';
+  });
+  
+  return text;
+}
+
+function getRnpMissedDaysText_(ss, targetDate) {
+  var rows = getRnpSheetRows_(ss);
+  if (!rows || rows.length < 11) {
+    return '⚠️ Лист "РНП" не найден или пуст.';
+  }
+  
+  var row10 = rows[9];
+  var dates = [];
+  for (var i = 0; i < row10.length; i++) {
+    var cell = row10[i] ? row10[i].trim() : '';
+    if (cell && /^\d{2}\.\d{2}\.\d{4}$/.test(cell)) {
+      dates.push({ index: i, date: cell });
+    }
+  }
+  
+  if (dates.length === 0) {
+    return '⚠️ В строке 10 листа "РНП" не найдены даты в формате ДД.ММ.ГГГГ.';
+  }
+  
+  var todayIdx = dates.findIndex(function(d) { return d.date === targetDate; });
+  if (todayIdx === -1) {
+    todayIdx = dates.length - 1;
+  }
+  
+  var managers = ['Адель', 'Азамат', 'Альмади', 'Мирас', 'Бахтияр', 'Амир', 'Салтанат', 'Айбат', 'Катя', 'Маржан', 'Томирис', 'Наргиз', 'Менеджер 21', 'Менеджер 22'];
+  var managerRows = {};
+  managers.forEach(function(m) {
+    managerRows[m] = [];
+  });
+  
+  var currentManager = null;
+  for (var r = 0; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.length === 0) continue;
+    var col0 = row[0] ? row[0].trim() : '';
+    var col1 = row[1] ? row[1].trim() : '';
+    var col2 = row[2] ? row[2].trim() : '';
+    var col3 = row[3] ? row[3].trim() : '';
+    
+    if (col0 && managers.indexOf(col0) !== -1) {
+      currentManager = col0;
+    } else if (!col0 && !col1 && !col2 && col3 && managers.indexOf(col3) !== -1) {
+      currentManager = col3;
+    }
+    
+    if (currentManager) {
+      if (col3 && col3 !== currentManager && ['ОТМЕНЫ', 'ПРОДЛЕНИЕ МВМ Зеленые', 'ПРОДЛЕНИЕ МВМ Желтые', 'ПРОДЛЕНИЕ МВМ Красные', 'УЛИЦА', 'ПРОДЛЕНИЕ ПОВТОРКА', 'ПРОДЛЕНИЕ ФОРСИРОВКА', 'ПРОДАЖИ ПО ПРОДУКТАМ'].indexOf(col3) === -1) {
+        managerRows[currentManager].push(row);
+      }
+    }
+  }
+  
+  function isFilled(m, colIdx) {
+    var mRows = managerRows[m];
+    if (!mRows || mRows.length === 0) return false;
+    for (var j = 0; j < mRows.length; j++) {
+      var valStr = mRows[j][colIdx] ? mRows[j][colIdx].trim() : '';
+      if (valStr && valStr !== '0' && valStr !== '0.0' && valStr !== '0,0' && valStr !== '0%' && valStr !== '0,00%' && valStr.indexOf('₸0') === -1) {
+        var clean = valStr.replace(/[^\d.,-]/g, '').replace(',', '.');
+        var parsed = parseFloat(clean);
+        if (!isNaN(parsed) && parsed !== 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+  
+  var text = '❌ *Пропуски заполнения РНП (за 14 дней)*\n';
+  text += '━━━━━━━━━━━━━━\n\n';
+  
+  var last14Days = [];
+  var startIdx = Math.max(0, todayIdx - 13);
+  for (var k = startIdx; k <= todayIdx; k++) {
+    last14Days.push(dates[k]);
+  }
+  
+  managers.forEach(function(m) {
+    if (managerRows[m].length === 0) return;
+    var missed = [];
+    last14Days.forEach(function(d) {
+      if (!isFilled(m, d.index)) {
+        missed.push(d.date.substring(0, 5));
+      }
+    });
+    
+    if (missed.length > 0) {
+      text += '👤 *' + m + '*: пропущено ' + missed.length + ' дн. (' + missed.join(', ') + ')\n';
+    } else {
+      text += '👤 *' + m + '*: ✅ Все дни заполнены!\n';
+    }
+  });
+  
+  text += '\n━━━━━━━━━━━━━━';
+  return text;
 }

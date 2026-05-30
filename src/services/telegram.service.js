@@ -48,9 +48,10 @@ class TelegramService {
    * @param {string|number} chatId - Target chat/user ID.
    * @param {string} text - Message text content.
    * @param {Object} [replyMarkup] - Optional Telegram Reply Markup object.
+   * @param {string} [parseMode] - Optional parse mode (e.g., 'Markdown').
    * @returns {Promise<Object>} Telegram API response data.
    */
-  async sendMessage(chatId, text, replyMarkup = null) {
+  async sendMessage(chatId, text, replyMarkup = null, parseMode = null) {
     const token = config.TELEGRAM.BOT_TOKEN;
     if (!token) throw new Error('Telegram token not configured');
 
@@ -62,6 +63,10 @@ class TelegramService {
 
     if (replyMarkup) {
       payload.reply_markup = replyMarkup;
+    }
+
+    if (parseMode) {
+      payload.parse_mode = parseMode;
     }
 
     const response = await axios.post(url, payload);
@@ -133,10 +138,10 @@ class TelegramService {
           `Я настроен присылать ежедневный отчет в 21:00.\n` +
           `Но вы можете запросить показатели на данный момент в любое время с помощью кнопок меню! 👇`;
         
-        // Define a native Reply Keyboard with five buttons
+        // Define a native Reply Keyboard with six buttons
         const replyMarkup = {
           keyboard: [
-            [{ text: '📊 Получить актуальный отчет' }],
+            [{ text: '📊 Получить актуальный отчет' }, { text: '📋 Отчеты РНП' }],
             [
               { text: '💰 Валовая прибыль за сегодня' },
               { text: '💰 Валовая прибыль ОП1' }
@@ -276,12 +281,88 @@ class TelegramService {
         }
         return;
       }
- 
+
+      // 3.4. Command: /rnp or button "📋 Отчеты РНП"
+      if (normalizedText === '/rnp' || normalizedText === '📋 отчеты рнп' || normalizedText === 'отчеты рнп') {
+        logger.info(`User ${chatId} opened RNP submenu.`);
+        const rnpWelcomeText = 
+          `📋 *Отчетность РНП по менеджерам*\n\n` +
+          `Выберите интересующий вас тип проверки с помощью кнопок ниже:`;
+        
+        const rnpMarkup = {
+          keyboard: [
+            [{ text: '📋 Проверить отчетность' }],
+            [{ text: '❌ Кто не заполнял РНП' }],
+            [{ text: '⬅️ Назад в меню' }]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: false
+        };
+
+        await this.sendMessage(chatId, rnpWelcomeText, rnpMarkup, 'Markdown');
+        return;
+      }
+
+      // 3.5. Command: button "📋 Проверить отчетность"
+      if (normalizedText === '📋 проверить отчетность' || normalizedText.includes('проверить отчетность')) {
+        logger.info(`User ${chatId} requested RNP reporting status.`);
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к онлайн-таблице и формирую отчет по отчетности РНП...');
+        try {
+          const rnpService = require('./rnp.service');
+          const reportText = await rnpService.getReportingStatus();
+          await this.sendMessage(chatId, reportText, null, 'Markdown');
+          logger.info(`RNP status report successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate RNP reporting status report: ${innerError.message}`);
+          await this.sendMessage(chatId, `⚠️ Ошибка при формировании отчета РНП: ${innerError.message}`);
+        }
+        return;
+      }
+
+      // 3.6. Command: button "❌ Кто не заполнял РНП"
+      if (normalizedText === '❌ кто не заполнял рнп' || normalizedText.includes('кто не заполнял рнп') || normalizedText.includes('кто в какие дни не заполнял')) {
+        logger.info(`User ${chatId} requested RNP missed days.`);
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к онлайн-таблице и рассчитываю пропуски РНП...');
+        try {
+          const rnpService = require('./rnp.service');
+          const reportText = await rnpService.getMissedDays();
+          await this.sendMessage(chatId, reportText, null, 'Markdown');
+          logger.info(`RNP missed days report successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate RNP missed days report: ${innerError.message}`);
+          await this.sendMessage(chatId, `⚠️ Ошибка при формировании отчета РНП: ${innerError.message}`);
+        }
+        return;
+      }
+
+      // 3.7. Command: button "⬅️ Назад в меню"
+      if (normalizedText === '⬅️ назад в меню' || normalizedText === 'назад в меню') {
+        const welcomeText = '👋 Возвращаю вас в главное меню отчетов продаж:';
+        const replyMarkup = {
+          keyboard: [
+            [{ text: '📊 Получить актуальный отчет' }, { text: '📋 Отчеты РНП' }],
+            [
+              { text: '💰 Валовая прибыль за сегодня' },
+              { text: '💰 Валовая прибыль ОП1' }
+            ],
+            [
+              { text: '📞 Отчет по звонкам' },
+              { text: '📊 Отчет по amoCRM' }
+            ]
+          ],
+          resize_keyboard: true,
+          one_time_keyboard: false
+        };
+        await this.sendMessage(chatId, welcomeText, replyMarkup);
+        return;
+      }
+  
       // 4. Fallback for other text inputs
       const fallbackText = 
         `💡 Я понимаю только специальные команды.\n\n` +
         `Используйте кнопки меню:\n` +
         `• **📊 Получить актуальный отчет**\n` +
+        `• **📋 Отчеты РНП**\n` +
         `• **💰 Валовая прибыль за сегодня**\n` +
         `• **💰 Валовая прибыль ОП1**\n` +
         `• **📞 Отчет по звонкам**\n` +
