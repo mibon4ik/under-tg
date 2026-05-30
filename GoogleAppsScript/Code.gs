@@ -631,8 +631,12 @@ function getRnpReportingStatusText_(ss, targetDate, sheetRnp) {
     var col2 = row[2] ? row[2].trim() : '';
     var col3 = row[3] ? row[3].trim() : '';
     
-    if (col0 && managers.indexOf(col0) !== -1) {
-      currentManager = col0;
+    if (col0) {
+      if (managers.indexOf(col0) !== -1) {
+        currentManager = col0;
+      } else {
+        currentManager = null; // Reset when hitting a system header/non-manager section
+      }
     } else if (!col0 && !col1 && !col2 && col3 && managers.indexOf(col3) !== -1) {
       currentManager = col3;
     }
@@ -766,8 +770,12 @@ function getRnpMissedDaysText_(ss, targetDate, sheetRnp) {
     var col2 = row[2] ? row[2].trim() : '';
     var col3 = row[3] ? row[3].trim() : '';
     
-    if (col0 && managers.indexOf(col0) !== -1) {
-      currentManager = col0;
+    if (col0) {
+      if (managers.indexOf(col0) !== -1) {
+        currentManager = col0;
+      } else {
+        currentManager = null; // Reset when hitting a system header/non-manager section
+      }
     } else if (!col0 && !col1 && !col2 && col3 && managers.indexOf(col3) !== -1) {
       currentManager = col3;
     }
