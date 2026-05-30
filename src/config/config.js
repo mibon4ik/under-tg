@@ -32,6 +32,7 @@ let currentConfig = {
   SHEET_PROD: '',
   SHEET_OTMEN: '',
   SHEET_OP1: '',
+  SHEET_RNP: '',
   
   // Binotel REST API settings
   BINOTEL_API_KEY: process.env.BINOTEL_API_KEY || '',
@@ -97,6 +98,7 @@ async function initDb() {
       if (dbSettings.SHEET_PROD) currentConfig.SHEET_PROD = dbSettings.SHEET_PROD;
       if (dbSettings.SHEET_OTMEN) currentConfig.SHEET_OTMEN = dbSettings.SHEET_OTMEN;
       if (dbSettings.SHEET_OP1) currentConfig.SHEET_OP1 = dbSettings.SHEET_OP1;
+      if (dbSettings.SHEET_RNP) currentConfig.SHEET_RNP = dbSettings.SHEET_RNP;
       
       // Load Binotel Settings
       if (dbSettings.BINOTEL_API_KEY) currentConfig.BINOTEL_API_KEY = dbSettings.BINOTEL_API_KEY;
@@ -137,6 +139,7 @@ function loadLocalSettings() {
       if (saved.SHEET_PROD) currentConfig.SHEET_PROD = saved.SHEET_PROD;
       if (saved.SHEET_OTMEN) currentConfig.SHEET_OTMEN = saved.SHEET_OTMEN;
       if (saved.SHEET_OP1) currentConfig.SHEET_OP1 = saved.SHEET_OP1;
+      if (saved.SHEET_RNP) currentConfig.SHEET_RNP = saved.SHEET_RNP;
       
       // Load Binotel Local Settings
       if (saved.BINOTEL_API_KEY) currentConfig.BINOTEL_API_KEY = saved.BINOTEL_API_KEY;
@@ -177,6 +180,7 @@ module.exports = {
   get SHEET_PROD() { return currentConfig.SHEET_PROD; },
   get SHEET_OTMEN() { return currentConfig.SHEET_OTMEN; },
   get SHEET_OP1() { return currentConfig.SHEET_OP1; },
+  get SHEET_RNP() { return currentConfig.SHEET_RNP; },
 
   get BINOTEL_API_KEY() { return currentConfig.BINOTEL_API_KEY; },
   get BINOTEL_API_SECRET() { return currentConfig.BINOTEL_API_SECRET; },
@@ -203,6 +207,7 @@ module.exports = {
       if (newSettings.SHEET_PROD !== undefined) currentConfig.SHEET_PROD = newSettings.SHEET_PROD;
       if (newSettings.SHEET_OTMEN !== undefined) currentConfig.SHEET_OTMEN = newSettings.SHEET_OTMEN;
       if (newSettings.SHEET_OP1 !== undefined) currentConfig.SHEET_OP1 = newSettings.SHEET_OP1;
+      if (newSettings.SHEET_RNP !== undefined) currentConfig.SHEET_RNP = newSettings.SHEET_RNP;
       
       // Update Binotel Settings in memory
       if (newSettings.BINOTEL_API_KEY !== undefined) currentConfig.BINOTEL_API_KEY = newSettings.BINOTEL_API_KEY;
@@ -223,7 +228,7 @@ module.exports = {
         const keys = [
           'TIMEZONE', 'BOT_TOKEN', 'CHAT_ID', 
           'APPS_SCRIPT_URL', 'APPS_SCRIPT_URL_OP1', 'DASHBOARD_PASSWORD',
-          'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1',
+          'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1', 'SHEET_RNP',
           'BINOTEL_API_KEY', 'BINOTEL_API_SECRET', 'BINOTEL_COMPANY_ID', 'BINOTEL_ACTIVE_MANAGERS',
           'AMO_SUBDOMAIN', 'AMO_INTEGRATION_TOKEN', 'AMO_ACTIVE_MANAGERS', 'AMO_REPORT_TIME', 'AMO_REPORT_ENABLED'
         ];
@@ -264,6 +269,7 @@ module.exports = {
         SHEET_PROD: currentConfig.SHEET_PROD,
         SHEET_OTMEN: currentConfig.SHEET_OTMEN,
         SHEET_OP1: currentConfig.SHEET_OP1,
+        SHEET_RNP: currentConfig.SHEET_RNP,
         BINOTEL_API_KEY: currentConfig.BINOTEL_API_KEY,
         BINOTEL_API_SECRET: currentConfig.BINOTEL_API_SECRET,
         BINOTEL_COMPANY_ID: currentConfig.BINOTEL_COMPANY_ID,
@@ -296,6 +302,7 @@ module.exports = {
       SHEET_PROD: currentConfig.SHEET_PROD,
       SHEET_OTMEN: currentConfig.SHEET_OTMEN,
       SHEET_OP1: currentConfig.SHEET_OP1,
+      SHEET_RNP: currentConfig.SHEET_RNP,
       BINOTEL_API_KEY: currentConfig.BINOTEL_API_KEY,
       BINOTEL_API_SECRET: currentConfig.BINOTEL_API_SECRET,
       BINOTEL_COMPANY_ID: currentConfig.BINOTEL_COMPANY_ID,

@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropdownsMainRow = document.getElementById('dropdownsMainRow');
   const selectSheetProd = document.getElementById('selectSheetProd');
   const selectSheetOtmen = document.getElementById('selectSheetOtmen');
+  const selectSheetRnp = document.getElementById('selectSheetRnp');
   
   const btnFetchSheetsOp1 = document.getElementById('btnFetchSheetsOp1');
   const dropdownsOp1Row = document.getElementById('dropdownsOp1Row');
@@ -148,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
           showToast('Успешно', 'Авторизовано. Настройки загружены.', 'success');
           
           // Auto-fetch sheet lists on load if URLs are active
-          if (activeSettings.APPS_SCRIPT_URL) fetchSheetsMain(false, activeSettings.SHEET_PROD, activeSettings.SHEET_OTMEN);
+          if (activeSettings.APPS_SCRIPT_URL) fetchSheetsMain(false, activeSettings.SHEET_PROD, activeSettings.SHEET_OTMEN, activeSettings.SHEET_RNP);
           if (activeSettings.APPS_SCRIPT_URL_OP1) fetchSheetsOp1(false, activeSettings.SHEET_OP1);
           
           // Auto-fetch Binotel managers on load
@@ -262,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 4. Fetch available sheets for Main department
-  async function fetchSheetsMain(showNotice = true, savedProd = '', savedOtmen = '') {
+  async function fetchSheetsMain(showNotice = true, savedProd = '', savedOtmen = '', savedRnp = '') {
     const url = appsScriptUrlInput.value.trim();
     if (!url) return;
 
@@ -283,6 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const sheets = data.sheets;
         populateDropdown(selectSheetProd, sheets, 'продлен', savedProd);
         populateDropdown(selectSheetOtmen, sheets, 'отмен', savedOtmen);
+        populateDropdown(selectSheetRnp, sheets, 'рнп', savedRnp);
         dropdownsMainRow.classList.remove('hidden');
         if (showNotice) showToast('Вкладки получены', `Основной отдел: загружено ${sheets.length} вкладок.`, 'success');
       }
@@ -354,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   btnFetchSheetsMain.addEventListener('click', () => {
-    fetchSheetsMain(true, activeSettings ? activeSettings.SHEET_PROD : '', activeSettings ? activeSettings.SHEET_OTMEN : '');
+    fetchSheetsMain(true, activeSettings ? activeSettings.SHEET_PROD : '', activeSettings ? activeSettings.SHEET_OTMEN : '', activeSettings ? activeSettings.SHEET_RNP : '');
   });
   btnFetchSheetsOp1.addEventListener('click', () => {
     fetchSheetsOp1(true, activeSettings ? activeSettings.SHEET_OP1 : '');
@@ -375,6 +377,7 @@ document.addEventListener('DOMContentLoaded', () => {
       SHEET_PROD: selectSheetProd.value || (activeSettings ? activeSettings.SHEET_PROD : ''),
       SHEET_OTMEN: selectSheetOtmen.value || (activeSettings ? activeSettings.SHEET_OTMEN : ''),
       SHEET_OP1: selectSheetOp1.value || (activeSettings ? activeSettings.SHEET_OP1 : ''),
+      SHEET_RNP: selectSheetRnp.value || (activeSettings ? activeSettings.SHEET_RNP : ''),
       
       // Preserve Binotel keys when saving other settings
       BINOTEL_API_KEY: activeSettings ? activeSettings.BINOTEL_API_KEY : '',

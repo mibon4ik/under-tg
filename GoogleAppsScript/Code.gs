@@ -47,6 +47,7 @@ function doGet(e) {
     var date = p.date || '';
     var sheetProd = p.sheetProd || '';
     var sheetOtmen = p.sheetOtmen || '';
+    var sheetRnp = p.sheetRnp || '';
     
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     if (!ss) {
@@ -64,14 +65,14 @@ function doGet(e) {
     if (action === 'rnpReportingStatus') {
       var timezone = p.timezone || 'Asia/Almaty';
       var targetDate = date || Utilities.formatDate(new Date(), timezone, 'dd.MM.yyyy');
-      var reportText = getRnpReportingStatusText_(ss, targetDate);
+      var reportText = getRnpReportingStatusText_(ss, targetDate, sheetRnp);
       return crmJson_({ ok: true, text: reportText });
     }
     
     if (action === 'rnpMissedDays') {
       var timezone = p.timezone || 'Asia/Almaty';
       var targetDate = date || Utilities.formatDate(new Date(), timezone, 'dd.MM.yyyy');
-      var reportText = getRnpMissedDaysText_(ss, targetDate);
+      var reportText = getRnpMissedDaysText_(ss, targetDate, sheetRnp);
       return crmJson_({ ok: true, text: reportText });
     }
     
@@ -526,16 +527,18 @@ function formatCurrency(num) {
  * -----------------------------------------------------------------------------
  */
 
-function getRnpSheetRows_(ss) {
-  var sheet = ss.getSheetByName('РНП');
+function getRnpSheetRows_(ss, sheetRnp) {
+  var sheetName = sheetRnp || 'РНП';
+  var sheet = ss.getSheetByName(sheetName);
   if (!sheet) return null;
   return sheet.getDataRange().getDisplayValues();
 }
 
-function getRnpReportingStatusText_(ss, targetDate) {
-  var rows = getRnpSheetRows_(ss);
+function getRnpReportingStatusText_(ss, targetDate, sheetRnp) {
+  var rows = getRnpSheetRows_(ss, sheetRnp);
   if (!rows || rows.length < 11) {
-    return '⚠️ Лист "РНП" не найден или пуст.';
+    var sheetName = sheetRnp || 'РНП';
+    return '⚠️ Лист "' + sheetName + '" не найден или пуст.';
   }
   
   var row10 = rows[9];
@@ -645,10 +648,11 @@ function getRnpReportingStatusText_(ss, targetDate) {
   return text;
 }
 
-function getRnpMissedDaysText_(ss, targetDate) {
-  var rows = getRnpSheetRows_(ss);
+function getRnpMissedDaysText_(ss, targetDate, sheetRnp) {
+  var rows = getRnpSheetRows_(ss, sheetRnp);
   if (!rows || rows.length < 11) {
-    return '⚠️ Лист "РНП" не найден или пуст.';
+    var sheetName = sheetRnp || 'РНП';
+    return '⚠️ Лист "' + sheetName + '" не найден или пуст.';
   }
   
   var row10 = rows[9];

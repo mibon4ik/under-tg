@@ -22,7 +22,8 @@ class RnpService {
       const response = await axios.get(webAppUrl, {
         params: {
           action: 'rnpReportingStatus',
-          timezone: config.TIMEZONE
+          timezone: config.TIMEZONE,
+          sheetRnp: config.SHEET_RNP || 'РНП'
         },
         timeout: 25000 // 25s timeout for Apps Script execution
       });
@@ -56,7 +57,8 @@ class RnpService {
       const response = await axios.get(webAppUrl, {
         params: {
           action: 'rnpMissedDays',
-          timezone: config.TIMEZONE
+          timezone: config.TIMEZONE,
+          sheetRnp: config.SHEET_RNP || 'РНП'
         },
         timeout: 25000 // 25s timeout
       });
