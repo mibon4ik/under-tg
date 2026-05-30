@@ -551,7 +551,14 @@ function getRnpReportingStatusText_(ss, targetDate) {
     return '⚠️ В строке 10 листа "РНП" не найдены даты в формате ДД.ММ.ГГГГ.';
   }
   
-  var todayIdx = dates.findIndex(function(d) { return d.date === targetDate; });
+  var todayIdx = -1;
+  for (var idx = 0; idx < dates.length; idx++) {
+    if (dates[idx].date === targetDate) {
+      todayIdx = idx;
+      break;
+    }
+  }
+  
   if (todayIdx === -1) {
     todayIdx = dates.length - 1;
     targetDate = dates[todayIdx].date;
@@ -559,9 +566,9 @@ function getRnpReportingStatusText_(ss, targetDate) {
   
   var managers = ['Адель', 'Азамат', 'Альмади', 'Мирас', 'Бахтияр', 'Амир', 'Салтанат', 'Айбат', 'Катя', 'Маржан', 'Томирис', 'Наргиз', 'Менеджер 21', 'Менеджер 22'];
   var managerRows = {};
-  managers.forEach(function(m) {
-    managerRows[m] = [];
-  });
+  for (var m = 0; m < managers.length; m++) {
+    managerRows[managers[m]] = [];
+  }
   
   var currentManager = null;
   for (var r = 0; r < rows.length; r++) {
@@ -585,8 +592,8 @@ function getRnpReportingStatusText_(ss, targetDate) {
     }
   }
   
-  function isFilled(m, colIdx) {
-    var mRows = managerRows[m];
+  function isFilled(managerName, colIdx) {
+    var mRows = managerRows[managerName];
     if (!mRows || mRows.length === 0) return false;
     for (var j = 0; j < mRows.length; j++) {
       var valStr = mRows[j][colIdx] ? mRows[j][colIdx].trim() : '';
@@ -610,28 +617,30 @@ function getRnpReportingStatusText_(ss, targetDate) {
     daysToCheck.push(dates[k]);
   }
   
-  daysToCheck.forEach(function(d) {
+  for (var d = 0; d < daysToCheck.length; d++) {
+    var day = daysToCheck[d];
     var filledList = [];
     var emptyList = [];
     
-    managers.forEach(function(m) {
-      if (managerRows[m].length === 0) return;
-      if (isFilled(m, d.index)) {
-        filledList.push(m);
+    for (var m = 0; m < managers.length; m++) {
+      var managerName = managers[m];
+      if (managerRows[managerName].length === 0) continue;
+      if (isFilled(managerName, day.index)) {
+        filledList.push(managerName);
       } else {
-        emptyList.push(m);
+        emptyList.push(managerName);
       }
-    });
+    }
     
-    var dateLabel = d.date;
-    if (d.date === targetDate) dateLabel += ' (Сегодня)';
-    else if (todayIdx > 0 && d.date === dates[todayIdx - 1].date) dateLabel += ' (Вчера)';
+    var dateLabel = day.date;
+    if (day.date === targetDate) dateLabel += ' (Сегодня)';
+    else if (todayIdx > 0 && day.date === dates[todayIdx - 1].date) dateLabel += ' (Вчера)';
     
     text += '\n📅 *' + dateLabel + '*\n';
     text += '✅ *Заполнили* (' + filledList.length + '):\n' + (filledList.length > 0 ? filledList.join(', ') : '_нет_') + '\n';
     text += '❌ *Не заполнили* (' + emptyList.length + '):\n' + (emptyList.length > 0 ? emptyList.join(', ') : '_нет_') + '\n';
     text += '━━━━━━━━━━━━━━\n';
-  });
+  }
   
   return text;
 }
@@ -655,16 +664,23 @@ function getRnpMissedDaysText_(ss, targetDate) {
     return '⚠️ В строке 10 листа "РНП" не найдены даты в формате ДД.ММ.ГГГГ.';
   }
   
-  var todayIdx = dates.findIndex(function(d) { return d.date === targetDate; });
+  var todayIdx = -1;
+  for (var idx = 0; idx < dates.length; idx++) {
+    if (dates[idx].date === targetDate) {
+      todayIdx = idx;
+      break;
+    }
+  }
+  
   if (todayIdx === -1) {
     todayIdx = dates.length - 1;
   }
   
   var managers = ['Адель', 'Азамат', 'Альмади', 'Мирас', 'Бахтияр', 'Амир', 'Салтанат', 'Айбат', 'Катя', 'Маржан', 'Томирис', 'Наргиз', 'Менеджер 21', 'Менеджер 22'];
   var managerRows = {};
-  managers.forEach(function(m) {
-    managerRows[m] = [];
-  });
+  for (var m = 0; m < managers.length; m++) {
+    managerRows[managers[m]] = [];
+  }
   
   var currentManager = null;
   for (var r = 0; r < rows.length; r++) {
@@ -688,8 +704,8 @@ function getRnpMissedDaysText_(ss, targetDate) {
     }
   }
   
-  function isFilled(m, colIdx) {
-    var mRows = managerRows[m];
+  function isFilled(managerName, colIdx) {
+    var mRows = managerRows[managerName];
     if (!mRows || mRows.length === 0) return false;
     for (var j = 0; j < mRows.length; j++) {
       var valStr = mRows[j][colIdx] ? mRows[j][colIdx].trim() : '';
@@ -713,21 +729,24 @@ function getRnpMissedDaysText_(ss, targetDate) {
     last14Days.push(dates[k]);
   }
   
-  managers.forEach(function(m) {
-    if (managerRows[m].length === 0) return;
+  for (var m = 0; m < managers.length; m++) {
+    var managerName = managers[m];
+    if (managerRows[managerName].length === 0) continue;
     var missed = [];
-    last14Days.forEach(function(d) {
-      if (!isFilled(m, d.index)) {
-        missed.push(d.date.substring(0, 5));
+    
+    for (var d = 0; d < last14Days.length; d++) {
+      var day = last14Days[d];
+      if (!isFilled(managerName, day.index)) {
+        missed.push(day.date.substring(0, 5));
       }
-    });
+    }
     
     if (missed.length > 0) {
-      text += '👤 *' + m + '*: пропущено ' + missed.length + ' дн. (' + missed.join(', ') + ')\n';
+      text += '👤 *' + managerName + '*: пропущено ' + missed.length + ' дн. (' + missed.join(', ') + ')\n';
     } else {
-      text += '👤 *' + m + '*: ✅ Все дни заполнены!\n';
+      text += '👤 *' + managerName + '*: ✅ Все дни заполнены!\n';
     }
-  });
+  }
   
   text += '\n━━━━━━━━━━━━━━';
   return text;
