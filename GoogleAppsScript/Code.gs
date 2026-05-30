@@ -564,6 +564,9 @@ function detectRnpManagers_(rows) {
     // Ignore dates and percentage symbols
     if (col0.indexOf('%') !== -1 || /^\d{2}\.\d{2}\.\d{4}$/.test(col0)) continue;
     
+    // Ignore placeholder managers like "Менеджер 21", "Менеджер 22"
+    if (/^Менеджер\s+\d+$/i.test(col0)) continue;
+    
     // Ignore specific headers
     if (systemHeaders.indexOf(col0) !== -1) continue;
     if (months.indexOf(col0) !== -1) continue;
