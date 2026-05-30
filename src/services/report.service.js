@@ -746,6 +746,8 @@ class ReportService {
 
       // Count tasks status
       const now = Math.floor(Date.now() / 1000);
+      const todayDateStr = formatter.formatDate(new Date(), config.TIMEZONE); // Format today's date as "dd.MM.yyyy" in Almaty timezone
+
       for (const t of tasks) {
         const respId = t.responsible_user_id;
         if (managerMap[respId]) {
@@ -754,12 +756,25 @@ class ReportService {
           
           if (!t.is_completed) {
             stats.tasksTotal++;
-            if (deadline > 0 && deadline < now) {
-              stats.tasksOverdue++;
-            } else if (deadline >= now && deadline <= stopTime) {
-              stats.tasksToday++;
-            } else {
+            
+            if (deadline === 0) {
               stats.tasksFuture++;
+            } else {
+              // Format task deadline in UTC (standardizing CIS offset differences for date matching)
+              const taskDateStr = new Intl.DateTimeFormat('ru-RU', {
+                timeZone: 'UTC',
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              }).format(new Date(deadline * 1000));
+
+              if (taskDateStr === todayDateStr) {
+                stats.tasksToday++;
+              } else if (deadline < now) {
+                stats.tasksOverdue++;
+              } else {
+                stats.tasksFuture++;
+              }
             }
           }
         }
