@@ -292,6 +292,84 @@ app.post('/send-report', authMiddleware, async (req, res) => {
 });
 
 /**
+ * Fetch all managers from Binotel and merge with active whitelist configurations
+ * GET /api/binotel/managers
+ */
+app.get('/api/binotel/managers', authMiddleware, async (req, res) => {
+  try {
+    if (!config.BINOTEL_API_KEY || !config.BINOTEL_API_SECRET || !config.BINOTEL_COMPANY_ID) {
+      return res.json({ 
+        success: false, 
+        error: 'credentials_missing',
+        message: 'Binotel API credentials are not configured.' 
+      });
+    }
+
+    const binotelService = require('./services/binotel.service');
+    const employees = await binotelService.fetchEmployees();
+    
+    const activeList = config.BINOTEL_ACTIVE_MANAGERS 
+      ? config.BINOTEL_ACTIVE_MANAGERS.split(',').map(e => e.trim().toLowerCase()).filter(e => e.length > 0)
+      : [];
+    const activeSet = new Set(activeList);
+
+    const managers = [];
+    for (const [email, emp] of Object.entries(employees)) {
+      const normEmail = email.trim().toLowerCase();
+      managers.push({
+        email: normEmail,
+        name: emp.name || email,
+        internalNumber: emp.endpointData ? emp.endpointData.internalNumber : null,
+        active: activeSet.has(normEmail)
+      });
+    }
+
+    // Sort alphabetically by name
+    managers.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+    res.json({
+      success: true,
+      managers
+    });
+  } catch (err) {
+    logger.error('Error in GET /api/binotel/managers:', err.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'binotel_error', 
+      message: err.message 
+    });
+  }
+});
+
+/**
+ * Save whitelisted active managers selection
+ * POST /api/binotel/managers
+ */
+app.post('/api/binotel/managers', authMiddleware, async (req, res) => {
+  const { activeEmails } = req.body;
+  if (!Array.isArray(activeEmails)) {
+    return res.status(400).json({ success: false, error: 'activeEmails must be an array' });
+  }
+
+  try {
+    const listString = activeEmails.map(e => e.trim().toLowerCase()).join(',');
+    const success = await config.saveSettings({
+      ...config.getRawSettings(),
+      BINOTEL_ACTIVE_MANAGERS: listString
+    });
+
+    if (success) {
+      res.json({ success: true, message: 'Active managers updated successfully.' });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to write settings database.' });
+    }
+  } catch (err) {
+    logger.error('Error in POST /api/binotel/managers:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
  * Telegram Webhook endpoint for forwarded updates from NestJS
  * POST /telegram/webhook
  */

@@ -32,6 +32,12 @@ let currentConfig = {
   SHEET_PROD: '',
   SHEET_OTMEN: '',
   SHEET_OP1: '',
+  
+  // Binotel REST API settings
+  BINOTEL_API_KEY: process.env.BINOTEL_API_KEY || '',
+  BINOTEL_API_SECRET: process.env.BINOTEL_API_SECRET || '',
+  BINOTEL_COMPANY_ID: process.env.BINOTEL_COMPANY_ID || '',
+  BINOTEL_ACTIVE_MANAGERS: process.env.BINOTEL_ACTIVE_MANAGERS || '',
 };
 
 // PostgreSQL Connection Pool Setup
@@ -84,6 +90,12 @@ async function initDb() {
       if (dbSettings.SHEET_PROD) currentConfig.SHEET_PROD = dbSettings.SHEET_PROD;
       if (dbSettings.SHEET_OTMEN) currentConfig.SHEET_OTMEN = dbSettings.SHEET_OTMEN;
       if (dbSettings.SHEET_OP1) currentConfig.SHEET_OP1 = dbSettings.SHEET_OP1;
+      
+      // Load Binotel Settings
+      if (dbSettings.BINOTEL_API_KEY) currentConfig.BINOTEL_API_KEY = dbSettings.BINOTEL_API_KEY;
+      if (dbSettings.BINOTEL_API_SECRET) currentConfig.BINOTEL_API_SECRET = dbSettings.BINOTEL_API_SECRET;
+      if (dbSettings.BINOTEL_COMPANY_ID) currentConfig.BINOTEL_COMPANY_ID = dbSettings.BINOTEL_COMPANY_ID;
+      if (dbSettings.BINOTEL_ACTIVE_MANAGERS) currentConfig.BINOTEL_ACTIVE_MANAGERS = dbSettings.BINOTEL_ACTIVE_MANAGERS;
 
     } catch (err) {
       console.error('[DB] Failed to initialize PostgreSQL settings:', err.message);
@@ -111,6 +123,12 @@ function loadLocalSettings() {
       if (saved.SHEET_PROD) currentConfig.SHEET_PROD = saved.SHEET_PROD;
       if (saved.SHEET_OTMEN) currentConfig.SHEET_OTMEN = saved.SHEET_OTMEN;
       if (saved.SHEET_OP1) currentConfig.SHEET_OP1 = saved.SHEET_OP1;
+      
+      // Load Binotel Local Settings
+      if (saved.BINOTEL_API_KEY) currentConfig.BINOTEL_API_KEY = saved.BINOTEL_API_KEY;
+      if (saved.BINOTEL_API_SECRET) currentConfig.BINOTEL_API_SECRET = saved.BINOTEL_API_SECRET;
+      if (saved.BINOTEL_COMPANY_ID) currentConfig.BINOTEL_COMPANY_ID = saved.BINOTEL_COMPANY_ID;
+      if (saved.BINOTEL_ACTIVE_MANAGERS) currentConfig.BINOTEL_ACTIVE_MANAGERS = saved.BINOTEL_ACTIVE_MANAGERS;
       console.log('[Local] Loaded settings from settings.json.');
     }
   } catch (err) {
@@ -139,6 +157,11 @@ module.exports = {
   get SHEET_OTMEN() { return currentConfig.SHEET_OTMEN; },
   get SHEET_OP1() { return currentConfig.SHEET_OP1; },
 
+  get BINOTEL_API_KEY() { return currentConfig.BINOTEL_API_KEY; },
+  get BINOTEL_API_SECRET() { return currentConfig.BINOTEL_API_SECRET; },
+  get BINOTEL_COMPANY_ID() { return currentConfig.BINOTEL_COMPANY_ID; },
+  get BINOTEL_ACTIVE_MANAGERS() { return currentConfig.BINOTEL_ACTIVE_MANAGERS; },
+
   // Saves settings dynamically to PostgreSQL and local fallback settings.json
   async saveSettings(newSettings) {
     try {
@@ -149,9 +172,15 @@ module.exports = {
       if (newSettings.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = newSettings.APPS_SCRIPT_URL;
       if (newSettings.APPS_SCRIPT_URL_OP1) currentConfig.APPS_SCRIPT_URL_OP1 = newSettings.APPS_SCRIPT_URL_OP1;
       if (newSettings.DASHBOARD_PASSWORD) currentConfig.DASHBOARD_PASSWORD = newSettings.DASHBOARD_PASSWORD;
-      currentConfig.SHEET_PROD = newSettings.SHEET_PROD || '';
-      currentConfig.SHEET_OTMEN = newSettings.SHEET_OTMEN || '';
-      currentConfig.SHEET_OP1 = newSettings.SHEET_OP1 || '';
+      if (newSettings.SHEET_PROD !== undefined) currentConfig.SHEET_PROD = newSettings.SHEET_PROD;
+      if (newSettings.SHEET_OTMEN !== undefined) currentConfig.SHEET_OTMEN = newSettings.SHEET_OTMEN;
+      if (newSettings.SHEET_OP1 !== undefined) currentConfig.SHEET_OP1 = newSettings.SHEET_OP1;
+      
+      // Update Binotel Settings in memory
+      if (newSettings.BINOTEL_API_KEY !== undefined) currentConfig.BINOTEL_API_KEY = newSettings.BINOTEL_API_KEY;
+      if (newSettings.BINOTEL_API_SECRET !== undefined) currentConfig.BINOTEL_API_SECRET = newSettings.BINOTEL_API_SECRET;
+      if (newSettings.BINOTEL_COMPANY_ID !== undefined) currentConfig.BINOTEL_COMPANY_ID = newSettings.BINOTEL_COMPANY_ID;
+      if (newSettings.BINOTEL_ACTIVE_MANAGERS !== undefined) currentConfig.BINOTEL_ACTIVE_MANAGERS = newSettings.BINOTEL_ACTIVE_MANAGERS;
 
       // 2. Persist to PostgreSQL if connection is active
       if (dbPool) {
@@ -159,27 +188,48 @@ module.exports = {
         const keys = [
           'TIMEZONE', 'BOT_TOKEN', 'CHAT_ID', 
           'APPS_SCRIPT_URL', 'APPS_SCRIPT_URL_OP1', 'DASHBOARD_PASSWORD',
-          'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1'
+          'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1',
+          'BINOTEL_API_KEY', 'BINOTEL_API_SECRET', 'BINOTEL_COMPANY_ID', 'BINOTEL_ACTIVE_MANAGERS'
         ];
         
         for (const k of keys) {
           let val = '';
           if (k === 'CHAT_ID') val = newSettings.CHAT_ID || '';
           else if (k === 'BOT_TOKEN') val = newSettings.BOT_TOKEN || '';
-          else val = newSettings[k] || '';
+          else if (k === 'BINOTEL_API_KEY') val = newSettings.BINOTEL_API_KEY !== undefined ? newSettings.BINOTEL_API_KEY : currentConfig.BINOTEL_API_KEY;
+          else if (k === 'BINOTEL_API_SECRET') val = newSettings.BINOTEL_API_SECRET !== undefined ? newSettings.BINOTEL_API_SECRET : currentConfig.BINOTEL_API_SECRET;
+          else if (k === 'BINOTEL_COMPANY_ID') val = newSettings.BINOTEL_COMPANY_ID !== undefined ? newSettings.BINOTEL_COMPANY_ID : currentConfig.BINOTEL_COMPANY_ID;
+          else if (k === 'BINOTEL_ACTIVE_MANAGERS') val = newSettings.BINOTEL_ACTIVE_MANAGERS !== undefined ? newSettings.BINOTEL_ACTIVE_MANAGERS : currentConfig.BINOTEL_ACTIVE_MANAGERS;
+          else val = newSettings[k] !== undefined ? newSettings[k] : currentConfig[k] || '';
           
           await dbPool.query(`
             INSERT INTO settings (key, value) 
             VALUES ($1, $2) 
             ON CONFLICT (key) 
             DO UPDATE SET value = $2
-          `, [k, val]);
+          `, [k, String(val)]);
         }
         console.log('[DB] Settings successfully saved to PostgreSQL database.');
       }
 
       // 3. Keep local backup in settings.json
-      fs.writeFileSync(settingsFilePath, JSON.stringify(newSettings, null, 2), 'utf8');
+      const settingsToBackup = {
+        TIMEZONE: currentConfig.TIMEZONE,
+        BOT_TOKEN: currentConfig.TELEGRAM.BOT_TOKEN,
+        CHAT_ID: currentConfig.TELEGRAM.CHAT_IDS.join(','),
+        APPS_SCRIPT_URL: currentConfig.APPS_SCRIPT_URL,
+        APPS_SCRIPT_URL_OP1: currentConfig.APPS_SCRIPT_URL_OP1,
+        DASHBOARD_PASSWORD: currentConfig.DASHBOARD_PASSWORD,
+        SHEET_PROD: currentConfig.SHEET_PROD,
+        SHEET_OTMEN: currentConfig.SHEET_OTMEN,
+        SHEET_OP1: currentConfig.SHEET_OP1,
+        BINOTEL_API_KEY: currentConfig.BINOTEL_API_KEY,
+        BINOTEL_API_SECRET: currentConfig.BINOTEL_API_SECRET,
+        BINOTEL_COMPANY_ID: currentConfig.BINOTEL_COMPANY_ID,
+        BINOTEL_ACTIVE_MANAGERS: currentConfig.BINOTEL_ACTIVE_MANAGERS
+      };
+      
+      fs.writeFileSync(settingsFilePath, JSON.stringify(settingsToBackup, null, 2), 'utf8');
       
       return true;
     } catch (err) {
@@ -199,7 +249,11 @@ module.exports = {
       DASHBOARD_PASSWORD: currentConfig.DASHBOARD_PASSWORD,
       SHEET_PROD: currentConfig.SHEET_PROD,
       SHEET_OTMEN: currentConfig.SHEET_OTMEN,
-      SHEET_OP1: currentConfig.SHEET_OP1
+      SHEET_OP1: currentConfig.SHEET_OP1,
+      BINOTEL_API_KEY: currentConfig.BINOTEL_API_KEY,
+      BINOTEL_API_SECRET: currentConfig.BINOTEL_API_SECRET,
+      BINOTEL_COMPANY_ID: currentConfig.BINOTEL_COMPANY_ID,
+      BINOTEL_ACTIVE_MANAGERS: currentConfig.BINOTEL_ACTIVE_MANAGERS
     };
   },
   

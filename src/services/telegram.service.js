@@ -133,14 +133,15 @@ class TelegramService {
           `Я настроен присылать ежедневный отчет в 21:00.\n` +
           `Но вы можете запросить показатели на данный момент в любое время с помощью кнопок меню! 👇`;
         
-        // Define a native Reply Keyboard with three buttons
+        // Define a native Reply Keyboard with four buttons
         const replyMarkup = {
           keyboard: [
             [{ text: '📊 Получить актуальный отчет' }],
             [
               { text: '💰 Валовая прибыль за сегодня' },
               { text: '💰 Валовая прибыль ОП1' }
-            ]
+            ],
+            [{ text: '📞 Отчет по звонкам' }]
           ],
           resize_keyboard: true,
           one_time_keyboard: false
@@ -229,13 +230,36 @@ class TelegramService {
         return;
       }
 
+      // 3.2. Command: /call_report or button "📞 Отчет по звонкам"
+      if (normalizedText === '/call_report' || normalizedText === '📞 отчет по звонкам' || normalizedText.includes('отчет по звонкам')) {
+        logger.info(`User ${chatId} requested an instant call report.`);
+        
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к Binotel и формирую отчет по звонкам...');
+        
+        try {
+          const reportService = require('./report.service');
+          const reportText = await reportService.getCallReportText();
+          await this.sendMessage(chatId, reportText);
+          logger.info(`Call report response successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate call report response: ${innerError.message}`);
+          await this.sendMessage(
+            chatId, 
+            `⚠️ Ошибка при формировании отчета по звонкам:\n${innerError.message}\n\n` +
+            `Пожалуйста, убедитесь, что учетные данные REST API Binotel настроены в панели управления.`
+          );
+        }
+        return;
+      }
+
       // 4. Fallback for other text inputs
       const fallbackText = 
         `💡 Я понимаю только специальные команды.\n\n` +
         `Используйте кнопки меню:\n` +
         `• **📊 Получить актуальный отчет**\n` +
         `• **💰 Валовая прибыль за сегодня**\n` +
-        `• **💰 Валовая прибыль ОП1**`;
+        `• **💰 Валовая прибыль ОП1**\n` +
+        `• **📞 Отчет по звонкам**`;
       
       await this.sendMessage(chatId, fallbackText);
     } catch (err) {

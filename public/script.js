@@ -31,6 +31,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnTestTelegram = document.getElementById('btnTestTelegram');
   const btnTestSheets = document.getElementById('btnTestSheets');
   
+  // Binotel Elements
+  const binotelApiKeyInput = document.getElementById('binotelApiKey');
+  const binotelApiSecretInput = document.getElementById('binotelApiSecret');
+  const binotelCompanyIdInput = document.getElementById('binotelCompanyId');
+  const btnSaveBinotel = document.getElementById('btnSaveBinotel');
+
+  const managersLoading = document.getElementById('managersLoading');
+  const managersPlaceholder = document.getElementById('managersPlaceholder');
+  const managersError = document.getElementById('managersError');
+  const managersList = document.getElementById('managersList');
+  const managersActions = document.getElementById('managersActions');
+  const btnSaveManagers = document.getElementById('btnSaveManagers');
+  const btnSyncManagers = document.getElementById('btnSyncManagers');
+  
   const toastContainer = document.getElementById('toastContainer');
   const indicatorDot = document.querySelector('.indicator-dot');
 
@@ -120,6 +134,9 @@ document.addEventListener('DOMContentLoaded', () => {
           // Auto-fetch sheet lists on load if URLs are active
           if (activeSettings.APPS_SCRIPT_URL) fetchSheetsMain(false, activeSettings.SHEET_PROD, activeSettings.SHEET_OTMEN);
           if (activeSettings.APPS_SCRIPT_URL_OP1) fetchSheetsOp1(false, activeSettings.SHEET_OP1);
+          
+          // Auto-fetch Binotel managers on load
+          fetchAndRenderManagers(false);
         }
       } else {
         localStorage.removeItem('dashboard_token');
@@ -182,6 +199,11 @@ document.addEventListener('DOMContentLoaded', () => {
     appsScriptUrlOp1Input.value = settings.APPS_SCRIPT_URL_OP1 || '';
     timezoneInput.value = settings.TIMEZONE || 'Asia/Almaty';
     dashboardPasswordInput.value = settings.DASHBOARD_PASSWORD || 'admin';
+    
+    // Binotel Fields
+    binotelApiKeyInput.value = settings.BINOTEL_API_KEY || '';
+    binotelApiSecretInput.value = settings.BINOTEL_API_SECRET || '';
+    binotelCompanyIdInput.value = settings.BINOTEL_COMPANY_ID || '';
   }
 
   // 3. Fetch configuration settings (fallback trigger for updates)
@@ -327,7 +349,13 @@ document.addEventListener('DOMContentLoaded', () => {
       DASHBOARD_PASSWORD: dashboardPasswordInput.value.trim(),
       SHEET_PROD: selectSheetProd.value || (activeSettings ? activeSettings.SHEET_PROD : ''),
       SHEET_OTMEN: selectSheetOtmen.value || (activeSettings ? activeSettings.SHEET_OTMEN : ''),
-      SHEET_OP1: selectSheetOp1.value || (activeSettings ? activeSettings.SHEET_OP1 : '')
+      SHEET_OP1: selectSheetOp1.value || (activeSettings ? activeSettings.SHEET_OP1 : ''),
+      
+      // Preserve Binotel keys when saving other settings
+      BINOTEL_API_KEY: activeSettings ? activeSettings.BINOTEL_API_KEY : '',
+      BINOTEL_API_SECRET: activeSettings ? activeSettings.BINOTEL_API_SECRET : '',
+      BINOTEL_COMPANY_ID: activeSettings ? activeSettings.BINOTEL_COMPANY_ID : '',
+      BINOTEL_ACTIVE_MANAGERS: activeSettings ? activeSettings.BINOTEL_ACTIVE_MANAGERS : ''
     };
 
     try {
@@ -485,6 +513,173 @@ document.addEventListener('DOMContentLoaded', () => {
       }, 300);
     }, 5000);
   }
+
+  // 9. Fetch and Render Binotel Employees List
+  async function fetchAndRenderManagers(showNotice = false) {
+    const key = binotelApiKeyInput.value.trim();
+    const secret = binotelApiSecretInput.value.trim();
+    const company = binotelCompanyIdInput.value.trim();
+
+    if (!key || !secret || !company) {
+      managersPlaceholder.classList.remove('hidden');
+      managersLoading.classList.add('hidden');
+      managersError.classList.add('hidden');
+      managersList.classList.add('hidden');
+      managersActions.classList.add('hidden');
+      return;
+    }
+
+    managersPlaceholder.classList.add('hidden');
+    managersLoading.classList.remove('hidden');
+    managersError.classList.add('hidden');
+    managersList.classList.add('hidden');
+    managersActions.classList.add('hidden');
+
+    if (showNotice) {
+      showToast('Binotel', 'Загрузка списка менеджеров...', 'info');
+    }
+
+    try {
+      const response = await fetch(getEndpoint('/api/binotel/managers'), {
+        headers: { 'Authorization': activeToken }
+      });
+      
+      const data = await response.json();
+      managersLoading.classList.add('hidden');
+
+      if (data && data.success) {
+        managersList.innerHTML = '';
+        if (!data.managers || data.managers.length === 0) {
+          managersList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">Сотрудники не найдены в этой компании.</div>';
+        } else {
+          data.managers.forEach(emp => {
+            const div = document.createElement('div');
+            div.className = 'manager-item';
+            div.innerHTML = `
+              <div class="manager-info">
+                <span class="manager-name" title="${emp.name}">${emp.name}</span>
+                <span class="manager-email" title="${emp.email}">${emp.email}</span>
+                ${emp.internalNumber ? `<span class="manager-internal">вн. ${emp.internalNumber}</span>` : ''}
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="manager-checkbox" data-email="${emp.email}" ${emp.active ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            `;
+            managersList.appendChild(div);
+          });
+        }
+        managersList.classList.remove('hidden');
+        managersActions.classList.remove('hidden');
+        if (showNotice) {
+          showToast('Готово!', `Загружено ${data.managers.length} сотрудников из Binotel.`, 'success');
+        }
+      } else {
+        if (data.error === 'credentials_missing') {
+          managersPlaceholder.classList.remove('hidden');
+        } else {
+          managersError.classList.remove('hidden');
+          if (showNotice) {
+            showToast('Ошибка Binotel API', data.message || 'Не удалось связаться с Binotel.', 'error');
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      managersLoading.classList.add('hidden');
+      managersError.classList.remove('hidden');
+      if (showNotice) {
+        showToast('Ошибка сети', 'Не удалось получить данные с сервера.', 'error');
+      }
+    }
+  }
+
+  // 10. Save Binotel Keys Action
+  btnSaveBinotel.addEventListener('click', async () => {
+    const key = binotelApiKeyInput.value.trim();
+    const secret = binotelApiSecretInput.value.trim();
+    const company = binotelCompanyIdInput.value.trim();
+
+    if (!key || !secret || !company) {
+      showToast('Внимание', 'Заполните API Key, API Secret и Company ID для сохранения.', 'error');
+      return;
+    }
+
+    setLoadingState(btnSaveBinotel, true);
+
+    const payload = {
+      ...activeSettings,
+      BINOTEL_API_KEY: key,
+      BINOTEL_API_SECRET: secret,
+      BINOTEL_COMPANY_ID: company
+    };
+
+    try {
+      const response = await fetch(getEndpoint('/api/settings'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activeToken
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+
+      if (data && data.success) {
+        showToast('Успешно', 'Авторизационные данные Binotel сохранены в БД!', 'success');
+        activeSettings = payload;
+        await fetchAndRenderManagers(true);
+      } else {
+        throw new Error(data.error || 'Неизвестная ошибка сервера');
+      }
+    } catch (err) {
+      showToast('Ошибка сохранения', err.message, 'error');
+    } finally {
+      setLoadingState(btnSaveBinotel, false);
+    }
+  });
+
+  // 11. Save whitelist active managers
+  btnSaveManagers.addEventListener('click', async () => {
+    const checkboxes = managersList.querySelectorAll('.manager-checkbox');
+    const activeEmails = [];
+    checkboxes.forEach(cb => {
+      if (cb.checked) {
+        activeEmails.push(cb.getAttribute('data-email'));
+      }
+    });
+
+    setLoadingState(btnSaveManagers, true);
+
+    try {
+      const response = await fetch(getEndpoint('/api/binotel/managers'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activeToken
+        },
+        body: JSON.stringify({ activeEmails })
+      });
+      const data = await response.json();
+
+      if (data && data.success) {
+        showToast('Сохранено', 'Список активных менеджеров сохранен в базу данных!', 'success');
+        if (activeSettings) {
+          activeSettings.BINOTEL_ACTIVE_MANAGERS = activeEmails.join(',');
+        }
+      } else {
+        throw new Error(data.error || 'Неизвестная ошибка');
+      }
+    } catch (err) {
+      showToast('Ошибка сохранения', err.message, 'error');
+    } finally {
+      setLoadingState(btnSaveManagers, false);
+    }
+  });
+
+  btnSyncManagers.addEventListener('click', () => {
+    fetchAndRenderManagers(true);
+  });
 
   // Trigger Auth check immediately
   checkAuthAndLoad();

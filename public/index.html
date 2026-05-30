@@ -151,6 +151,77 @@
           </div>
         </div>
 
+        <!-- Binotel Integration Card -->
+        <div class="card binotel-card full-width">
+          <div class="card-title-bar">
+            <span class="card-icon">📞</span>
+            <h3>Интеграция с телефонией Binotel</h3>
+          </div>
+          
+          <p class="description">Введите учетные данные REST API для загрузки сотрудников и фильтрации отчетов по звонкам.</p>
+          
+          <div class="inputs-row">
+            <div class="input-group">
+              <label for="binotelApiKey">API Key</label>
+              <input type="password" id="binotelApiKey" placeholder="Например: 19931a-31af467">
+            </div>
+            
+            <div class="input-group">
+              <label for="binotelApiSecret">API Secret</label>
+              <input type="password" id="binotelApiSecret" placeholder="Введите секретный ключ API...">
+            </div>
+            
+            <div class="input-group" style="grid-column: span 2;">
+              <label for="binotelCompanyId">Company ID</label>
+              <input type="text" id="binotelCompanyId" placeholder="Например: 74326">
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button type="button" id="btnSaveBinotel" class="btn btn-secondary">
+              <span class="btn-text">Сохранить ключи Binotel</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="managers-selection-block">
+            <h4 style="margin-bottom: 0.5rem; font-weight: 600; font-size: 1.1rem; color: #fff;">Выбор менеджеров для отчетов</h4>
+            <p class="description">Укажите галочками (тумблерами), по каким менеджерам присылать ежедневные и интерактивные отчеты звонков.</p>
+            
+            <div class="managers-list-container" style="margin-top: 1rem;">
+              <div id="managersLoading" class="loading-state hidden">
+                <span class="spinner" style="display: inline-block; position: relative; margin-right: 8px;"></span>
+                <span>Загрузка сотрудников из Binotel...</span>
+              </div>
+              
+              <div id="managersPlaceholder" class="loading-state">
+                <span>🔒 Сохраните валидные API-ключи для загрузки списка сотрудников.</span>
+              </div>
+              
+              <div id="managersError" class="error-state hidden">
+                <p>⚠️ Ошибка подключения к API. Проверьте правильность ключей и статус сервера.</p>
+              </div>
+              
+              <div id="managersList" class="managers-grid hidden">
+                <!-- Dynamically populated employees -->
+              </div>
+            </div>
+          </div>
+
+          <div class="card-actions hidden" id="managersActions">
+            <button type="button" id="btnSaveManagers" class="btn btn-primary">
+              <span class="btn-text">Сохранить выбор менеджеров</span>
+              <span class="spinner"></span>
+            </button>
+            <button type="button" id="btnSyncManagers" class="btn btn-secondary" title="Синхронизировать">
+              <span class="btn-text">Обновить список</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+        </div>
+
         <!-- System Settings Section -->
         <div class="card system-card full-width">
           <div class="card-title-bar">

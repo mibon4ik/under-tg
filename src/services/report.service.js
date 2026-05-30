@@ -465,6 +465,176 @@ class ReportService {
       return `⚠️ Ошибка при получении данных ОП1:\n${error.message}\n\nПожалуйста, проверьте APPS_SCRIPT_URL_OP1 и публикацию веб-приложения.`;
     }
   }
+
+  /**
+   * Fetches call statistics from Binotel API and aggregates report for active managers.
+   * @param {string} [targetDateStr] - Date formatted as "dd.MM.yyyy"
+   * @returns {Promise<string>} Fully formatted Telegram message
+   */
+  async getCallReportText(targetDateStr = null) {
+    const dateToProcess = targetDateStr || formatter.formatDate(new Date());
+    logger.info(`Generating call report for managers on date: ${dateToProcess}`);
+
+    // Check credentials first
+    if (!config.BINOTEL_API_KEY || !config.BINOTEL_API_SECRET || !config.BINOTEL_COMPANY_ID) {
+      return `📞 ОТЧЕТ ПО ЗВОНКАМ МЕНЕДЖЕРОВ\n\nДата: ${dateToProcess}\n\n⚠️ Учетные данные Binotel API не настроены в панели управления. Пожалуйста, сохраните API-key, API-secret и Company ID.`;
+    }
+
+    // Parse date parts and calculate local day range timestamps
+    let startTime, stopTime;
+    try {
+      const [day, month, year] = dateToProcess.split('.').map(Number);
+      
+      const getTimestampForLocalTime = (y, m, d, h, min, sec, tz) => {
+        let guess = Date.UTC(y, m - 1, d, h, min, sec);
+        const formatterInstance = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: 'numeric',
+          second: 'numeric',
+          hour12: false
+        });
+        const parts = formatterInstance.formatToParts(new Date(guess));
+        const partVal = (type) => parseInt(parts.find(p => p.type === type).value, 10);
+        const fYear = partVal('year');
+        const fMonth = partVal('month');
+        const fDay = partVal('day');
+        const fHour = partVal('hour') % 24;
+        const fMin = partVal('minute');
+        const fSec = partVal('second');
+        const formattedUTC = Date.UTC(fYear, fMonth - 1, fDay, fHour, fMin, fSec);
+        const diff = formattedUTC - guess;
+        return Math.floor((guess - diff) / 1000);
+      };
+
+      startTime = getTimestampForLocalTime(year, month, day, 0, 0, 0, config.TIMEZONE);
+      stopTime = getTimestampForLocalTime(year, month, day, 23, 59, 59, config.TIMEZONE);
+    } catch (err) {
+      logger.error('Failed to parse date range for Binotel calls:', err.message);
+      return `⚠️ Не удалось разобрать дату ${dateToProcess} для формирования отчета по звонкам.`;
+    }
+
+    try {
+      const binotelService = require('./binotel.service');
+      logger.info(`Fetching calls for range: ${startTime} to ${stopTime}`);
+      
+      const [employees, calls] = await Promise.all([
+        binotelService.fetchEmployees(),
+        binotelService.fetchCallsForPeriod(startTime, stopTime)
+      ]);
+
+      const activeEmails = config.BINOTEL_ACTIVE_MANAGERS
+        ? config.BINOTEL_ACTIVE_MANAGERS.split(',').map(e => e.trim().toLowerCase()).filter(e => e.length > 0)
+        : [];
+
+      if (activeEmails.length === 0) {
+        return `📞 ОТЧЕТ ПО ЗВОНКАМ МЕНЕДЖЕРОВ\n\nДата: ${dateToProcess}\n\n⚠️ В веб-интерфейсе не выбран ни один менеджер для отображения в отчетах.`;
+      }
+
+      const activeManagers = [];
+      const managerEmailsSet = new Set(activeEmails);
+      const internalToManager = {};
+      const emailToManager = {};
+
+      for (const [email, emp] of Object.entries(employees)) {
+        const normEmail = email.trim().toLowerCase();
+        if (managerEmailsSet.has(normEmail)) {
+          const mgr = {
+            email: normEmail,
+            name: emp.name || email,
+            internalNumber: emp.endpointData ? emp.endpointData.internalNumber : null,
+            stats: {
+              totalCalls: 0,
+              uniqueCalls: new Set(),
+              totalMinutes: 0, // In seconds, converted to minutes later
+              successCalls: 0,
+              longCalls: 0
+            }
+          };
+          activeManagers.push(mgr);
+          emailToManager[normEmail] = mgr;
+          if (mgr.internalNumber) {
+            internalToManager[mgr.internalNumber] = mgr;
+          }
+        }
+      }
+
+      if (activeManagers.length === 0) {
+        return `📞 ОТЧЕТ ПО ЗВОНКАМ МЕНЕДЖЕРОВ\n\nДата: ${dateToProcess}\n\n⚠️ Ни один из выбранных менеджеров не найден в списке сотрудников Binotel.`;
+      }
+
+      // Aggregate call details
+      for (const call of Object.values(calls)) {
+        let targetManager = null;
+
+        // Try to match by email
+        if (call.employeeData && call.employeeData.email) {
+          const callEmail = call.employeeData.email.trim().toLowerCase();
+          if (emailToManager[callEmail]) {
+            targetManager = emailToManager[callEmail];
+          }
+        }
+
+        // Fallback to internalNumber
+        if (!targetManager && call.internalNumber) {
+          if (internalToManager[call.internalNumber]) {
+            targetManager = internalToManager[call.internalNumber];
+          }
+        }
+
+        if (targetManager) {
+          const stats = targetManager.stats;
+          stats.totalCalls++;
+
+          if (call.externalNumber) {
+            stats.uniqueCalls.add(call.externalNumber);
+          }
+
+          const billsec = parseInt(call.billsec || 0, 10);
+          stats.totalMinutes += billsec;
+
+          const disposition = call.disposition ? call.disposition.toUpperCase() : '';
+          if (disposition === 'ANSWER') {
+            stats.successCalls++;
+          }
+
+          if (billsec > 60) {
+            stats.longCalls++;
+          }
+        }
+      }
+
+      // Sort managers alphabetically by name
+      activeManagers.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+      // Build Message
+      let msg = `📞 ОТЧЕТ ПО ЗВОНКАМ МЕНЕДЖЕРОВ\n\n`;
+      msg += `Дата: ${dateToProcess}\n`;
+      msg += `━━━━━━━━━━━━━━\n\n`;
+
+      for (const mgr of activeManagers) {
+        const minutes = Math.round(mgr.stats.totalMinutes / 60);
+
+        msg += `👤 **${mgr.name}** ${mgr.internalNumber ? `(вн. ${mgr.internalNumber})` : ''}\n`;
+        msg += `• Всего звонков: ${mgr.stats.totalCalls}\n`;
+        msg += `• Уникальных звонков: ${mgr.stats.uniqueCalls.size}\n`;
+        msg += `• Минут на линии: ${minutes} мин\n`;
+        msg += `• Успешных звонков: ${mgr.stats.successCalls}\n`;
+        msg += `• Звонков > 1 мин: ${mgr.stats.longCalls}\n\n`;
+      }
+
+      msg += `━━━━━━━━━━━━━━\n`;
+      msg += `Отчет сформирован автоматически`;
+
+      return msg;
+    } catch (err) {
+      logger.error('Failed to generate call report:', err.message);
+      return `⚠️ Ошибка формирования отчета по звонкам:\n${err.message}`;
+    }
+  }
 }
 
 module.exports = new ReportService();
