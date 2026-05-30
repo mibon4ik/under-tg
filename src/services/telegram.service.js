@@ -133,7 +133,7 @@ class TelegramService {
           `Я настроен присылать ежедневный отчет в 21:00.\n` +
           `Но вы можете запросить показатели на данный момент в любое время с помощью кнопок меню! 👇`;
         
-        // Define a native Reply Keyboard with four buttons
+        // Define a native Reply Keyboard with five buttons
         const replyMarkup = {
           keyboard: [
             [{ text: '📊 Получить актуальный отчет' }],
@@ -141,7 +141,10 @@ class TelegramService {
               { text: '💰 Валовая прибыль за сегодня' },
               { text: '💰 Валовая прибыль ОП1' }
             ],
-            [{ text: '📞 Отчет по звонкам' }]
+            [
+              { text: '📞 Отчет по звонкам' },
+              { text: '📊 Отчет по amoCRM' }
+            ]
           ],
           resize_keyboard: true,
           one_time_keyboard: false
@@ -252,6 +255,28 @@ class TelegramService {
         return;
       }
 
+      // 3.3. Command: /amo_report or button "📊 Отчет по amoCRM"
+      if (normalizedText === '/amo_report' || normalizedText === '📊 отчет по amocrm' || normalizedText.includes('отчет по amo')) {
+        logger.info(`User ${chatId} requested an instant amoCRM report.`);
+        
+        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к amoCRM и формирую отчет по работе менеджеров...');
+        
+        try {
+          const reportService = require('./report.service');
+          const reportText = await reportService.getAmoReportText();
+          await this.sendMessage(chatId, reportText);
+          logger.info(`amoCRM report response successfully sent to chat ID: ${chatId}`);
+        } catch (innerError) {
+          logger.error(`Failed to generate amoCRM report response: ${innerError.message}`);
+          await this.sendMessage(
+            chatId, 
+            `⚠️ Ошибка при формировании отчета amoCRM:\n${innerError.message}\n\n` +
+            `Пожалуйста, убедитесь, что Субдомен и Токен доступа настроены в панели управления.`
+          );
+        }
+        return;
+      }
+ 
       // 4. Fallback for other text inputs
       const fallbackText = 
         `💡 Я понимаю только специальные команды.\n\n` +
@@ -259,7 +284,8 @@ class TelegramService {
         `• **📊 Получить актуальный отчет**\n` +
         `• **💰 Валовая прибыль за сегодня**\n` +
         `• **💰 Валовая прибыль ОП1**\n` +
-        `• **📞 Отчет по звонкам**`;
+        `• **📞 Отчет по звонкам**\n` +
+        `• **📊 Отчет по amoCRM**`;
       
       await this.sendMessage(chatId, fallbackText);
     } catch (err) {

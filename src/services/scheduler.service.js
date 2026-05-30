@@ -8,23 +8,25 @@ const logger = require('../utils/logger');
  */
 class SchedulerService {
   constructor() {
-    this.task = null;
+    this.salesTask = null;
+    this.amoTask = null;
   }
 
   /**
-   * Initializes and starts the cron job.
+   * Initializes and starts the cron jobs.
    */
   start() {
-    const cronExpression = '0 21 * * *'; // Every day at 21:00 (9:00 PM)
     const timezone = config.TIMEZONE;
 
-    logger.info(`Initializing scheduler. Cron expression: "${cronExpression}" in timezone "${timezone}".`);
+    // 1. Schedule daily sales report
+    const salesCronExpression = '0 21 * * *'; // Every day at 21:00 (9:00 PM)
+    logger.info(`Initializing sales report scheduler. Cron expression: "${salesCronExpression}" in timezone "${timezone}".`);
 
     try {
-      this.task = cron.schedule(
-        cronExpression,
+      this.salesTask = cron.schedule(
+        salesCronExpression,
         async () => {
-          logger.info('Scheduled cron task triggered. Executing daily sales report...');
+          logger.info('Scheduled sales cron task triggered. Executing daily sales report...');
           try {
             const result = await reportService.generateAndSendReport();
             if (result.success) {
@@ -42,20 +44,74 @@ class SchedulerService {
         }
       );
 
-      logger.info('Cron job scheduler successfully started.');
+      logger.info('Sales cron job scheduler successfully started.');
     } catch (error) {
-      logger.error(`Failed to start cron scheduler: ${error.message}`);
+      logger.error(`Failed to start sales cron scheduler: ${error.message}`);
+    }
+
+    // 2. Schedule daily amoCRM report
+    if (config.AMO_REPORT_ENABLED === 'true') {
+      const amoTime = config.AMO_REPORT_TIME || '20:00';
+      const [hours, minutes] = amoTime.split(':').map(Number);
+      
+      // Construct valid cron expression: 'minutes hours * * *'
+      const amoCronExpression = `${isNaN(minutes) ? 0 : minutes} ${isNaN(hours) ? 20 : hours} * * *`;
+      logger.info(`Initializing amoCRM report scheduler. Cron expression: "${amoCronExpression}" in timezone "${timezone}".`);
+
+      try {
+        this.amoTask = cron.schedule(
+          amoCronExpression,
+          async () => {
+            logger.info('Scheduled amoCRM cron task triggered. Executing daily amoCRM report...');
+            try {
+              const result = await reportService.generateAndSendAmoReport();
+              if (result.success) {
+                logger.info('Scheduled daily amoCRM report generated and sent successfully.');
+              } else {
+                logger.error(`Scheduled daily amoCRM report finished with errors: ${result.error}`);
+              }
+            } catch (err) {
+              logger.error(`Critical error inside amoCRM cron execution block: ${err.message}`);
+            }
+          },
+          {
+            scheduled: true,
+            timezone: timezone
+          }
+        );
+
+        logger.info('amoCRM cron job scheduler successfully started.');
+      } catch (error) {
+        logger.error(`Failed to start amoCRM cron scheduler: ${error.message}`);
+      }
+    } else {
+      logger.info('amoCRM automated report scheduling is disabled.');
     }
   }
 
   /**
-   * Stops the active cron job.
+   * Stops active cron jobs.
    */
   stop() {
-    if (this.task) {
-      this.task.stop();
-      logger.info('Cron job scheduler stopped.');
+    if (this.salesTask) {
+      this.salesTask.stop();
+      this.salesTask = null;
+      logger.info('Sales cron job scheduler stopped.');
     }
+    if (this.amoTask) {
+      this.amoTask.stop();
+      this.amoTask = null;
+      logger.info('amoCRM cron job scheduler stopped.');
+    }
+  }
+
+  /**
+   * Restarts the scheduler by stopping and re-starting.
+   */
+  restart() {
+    logger.info('Restarting report scheduler with new settings...');
+    this.stop();
+    this.start();
   }
 }
 

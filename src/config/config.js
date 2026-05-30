@@ -38,6 +38,13 @@ let currentConfig = {
   BINOTEL_API_SECRET: process.env.BINOTEL_API_SECRET || '',
   BINOTEL_COMPANY_ID: process.env.BINOTEL_COMPANY_ID || '',
   BINOTEL_ACTIVE_MANAGERS: process.env.BINOTEL_ACTIVE_MANAGERS || '',
+
+  // amoCRM settings
+  AMO_SUBDOMAIN: process.env.AMO_SUBDOMAIN || '',
+  AMO_INTEGRATION_TOKEN: process.env.AMO_INTEGRATION_TOKEN || '',
+  AMO_ACTIVE_MANAGERS: process.env.AMO_ACTIVE_MANAGERS || '',
+  AMO_REPORT_TIME: process.env.AMO_REPORT_TIME || '20:00',
+  AMO_REPORT_ENABLED: process.env.AMO_REPORT_ENABLED || 'true',
 };
 
 // PostgreSQL Connection Pool Setup
@@ -97,6 +104,13 @@ async function initDb() {
       if (dbSettings.BINOTEL_COMPANY_ID) currentConfig.BINOTEL_COMPANY_ID = dbSettings.BINOTEL_COMPANY_ID;
       if (dbSettings.BINOTEL_ACTIVE_MANAGERS) currentConfig.BINOTEL_ACTIVE_MANAGERS = dbSettings.BINOTEL_ACTIVE_MANAGERS;
 
+      // Load amoCRM Settings
+      if (dbSettings.AMO_SUBDOMAIN) currentConfig.AMO_SUBDOMAIN = dbSettings.AMO_SUBDOMAIN;
+      if (dbSettings.AMO_INTEGRATION_TOKEN) currentConfig.AMO_INTEGRATION_TOKEN = dbSettings.AMO_INTEGRATION_TOKEN;
+      if (dbSettings.AMO_ACTIVE_MANAGERS) currentConfig.AMO_ACTIVE_MANAGERS = dbSettings.AMO_ACTIVE_MANAGERS;
+      if (dbSettings.AMO_REPORT_TIME) currentConfig.AMO_REPORT_TIME = dbSettings.AMO_REPORT_TIME;
+      if (dbSettings.AMO_REPORT_ENABLED) currentConfig.AMO_REPORT_ENABLED = dbSettings.AMO_REPORT_ENABLED;
+
     } catch (err) {
       console.error('[DB] Failed to initialize PostgreSQL settings:', err.message);
       loadLocalSettings();
@@ -129,6 +143,13 @@ function loadLocalSettings() {
       if (saved.BINOTEL_API_SECRET) currentConfig.BINOTEL_API_SECRET = saved.BINOTEL_API_SECRET;
       if (saved.BINOTEL_COMPANY_ID) currentConfig.BINOTEL_COMPANY_ID = saved.BINOTEL_COMPANY_ID;
       if (saved.BINOTEL_ACTIVE_MANAGERS) currentConfig.BINOTEL_ACTIVE_MANAGERS = saved.BINOTEL_ACTIVE_MANAGERS;
+
+      // Load amoCRM Local Settings
+      if (saved.AMO_SUBDOMAIN) currentConfig.AMO_SUBDOMAIN = saved.AMO_SUBDOMAIN;
+      if (saved.AMO_INTEGRATION_TOKEN) currentConfig.AMO_INTEGRATION_TOKEN = saved.AMO_INTEGRATION_TOKEN;
+      if (saved.AMO_ACTIVE_MANAGERS) currentConfig.AMO_ACTIVE_MANAGERS = saved.AMO_ACTIVE_MANAGERS;
+      if (saved.AMO_REPORT_TIME) currentConfig.AMO_REPORT_TIME = saved.AMO_REPORT_TIME;
+      if (saved.AMO_REPORT_ENABLED) currentConfig.AMO_REPORT_ENABLED = saved.AMO_REPORT_ENABLED;
       console.log('[Local] Loaded settings from settings.json.');
     }
   } catch (err) {
@@ -162,6 +183,13 @@ module.exports = {
   get BINOTEL_COMPANY_ID() { return currentConfig.BINOTEL_COMPANY_ID; },
   get BINOTEL_ACTIVE_MANAGERS() { return currentConfig.BINOTEL_ACTIVE_MANAGERS; },
 
+  // amoCRM getters
+  get AMO_SUBDOMAIN() { return currentConfig.AMO_SUBDOMAIN; },
+  get AMO_INTEGRATION_TOKEN() { return currentConfig.AMO_INTEGRATION_TOKEN; },
+  get AMO_ACTIVE_MANAGERS() { return currentConfig.AMO_ACTIVE_MANAGERS; },
+  get AMO_REPORT_TIME() { return currentConfig.AMO_REPORT_TIME; },
+  get AMO_REPORT_ENABLED() { return currentConfig.AMO_REPORT_ENABLED; },
+
   // Saves settings dynamically to PostgreSQL and local fallback settings.json
   async saveSettings(newSettings) {
     try {
@@ -182,6 +210,13 @@ module.exports = {
       if (newSettings.BINOTEL_COMPANY_ID !== undefined) currentConfig.BINOTEL_COMPANY_ID = newSettings.BINOTEL_COMPANY_ID;
       if (newSettings.BINOTEL_ACTIVE_MANAGERS !== undefined) currentConfig.BINOTEL_ACTIVE_MANAGERS = newSettings.BINOTEL_ACTIVE_MANAGERS;
 
+      // Update amoCRM Settings in memory
+      if (newSettings.AMO_SUBDOMAIN !== undefined) currentConfig.AMO_SUBDOMAIN = newSettings.AMO_SUBDOMAIN;
+      if (newSettings.AMO_INTEGRATION_TOKEN !== undefined) currentConfig.AMO_INTEGRATION_TOKEN = newSettings.AMO_INTEGRATION_TOKEN;
+      if (newSettings.AMO_ACTIVE_MANAGERS !== undefined) currentConfig.AMO_ACTIVE_MANAGERS = newSettings.AMO_ACTIVE_MANAGERS;
+      if (newSettings.AMO_REPORT_TIME !== undefined) currentConfig.AMO_REPORT_TIME = newSettings.AMO_REPORT_TIME;
+      if (newSettings.AMO_REPORT_ENABLED !== undefined) currentConfig.AMO_REPORT_ENABLED = newSettings.AMO_REPORT_ENABLED;
+
       // 2. Persist to PostgreSQL if connection is active
       if (dbPool) {
         console.log('[DB] Saving settings to PostgreSQL database...');
@@ -189,7 +224,8 @@ module.exports = {
           'TIMEZONE', 'BOT_TOKEN', 'CHAT_ID', 
           'APPS_SCRIPT_URL', 'APPS_SCRIPT_URL_OP1', 'DASHBOARD_PASSWORD',
           'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1',
-          'BINOTEL_API_KEY', 'BINOTEL_API_SECRET', 'BINOTEL_COMPANY_ID', 'BINOTEL_ACTIVE_MANAGERS'
+          'BINOTEL_API_KEY', 'BINOTEL_API_SECRET', 'BINOTEL_COMPANY_ID', 'BINOTEL_ACTIVE_MANAGERS',
+          'AMO_SUBDOMAIN', 'AMO_INTEGRATION_TOKEN', 'AMO_ACTIVE_MANAGERS', 'AMO_REPORT_TIME', 'AMO_REPORT_ENABLED'
         ];
         
         for (const k of keys) {
@@ -200,6 +236,11 @@ module.exports = {
           else if (k === 'BINOTEL_API_SECRET') val = newSettings.BINOTEL_API_SECRET !== undefined ? newSettings.BINOTEL_API_SECRET : currentConfig.BINOTEL_API_SECRET;
           else if (k === 'BINOTEL_COMPANY_ID') val = newSettings.BINOTEL_COMPANY_ID !== undefined ? newSettings.BINOTEL_COMPANY_ID : currentConfig.BINOTEL_COMPANY_ID;
           else if (k === 'BINOTEL_ACTIVE_MANAGERS') val = newSettings.BINOTEL_ACTIVE_MANAGERS !== undefined ? newSettings.BINOTEL_ACTIVE_MANAGERS : currentConfig.BINOTEL_ACTIVE_MANAGERS;
+          else if (k === 'AMO_SUBDOMAIN') val = newSettings.AMO_SUBDOMAIN !== undefined ? newSettings.AMO_SUBDOMAIN : currentConfig.AMO_SUBDOMAIN;
+          else if (k === 'AMO_INTEGRATION_TOKEN') val = newSettings.AMO_INTEGRATION_TOKEN !== undefined ? newSettings.AMO_INTEGRATION_TOKEN : currentConfig.AMO_INTEGRATION_TOKEN;
+          else if (k === 'AMO_ACTIVE_MANAGERS') val = newSettings.AMO_ACTIVE_MANAGERS !== undefined ? newSettings.AMO_ACTIVE_MANAGERS : currentConfig.AMO_ACTIVE_MANAGERS;
+          else if (k === 'AMO_REPORT_TIME') val = newSettings.AMO_REPORT_TIME !== undefined ? newSettings.AMO_REPORT_TIME : currentConfig.AMO_REPORT_TIME;
+          else if (k === 'AMO_REPORT_ENABLED') val = newSettings.AMO_REPORT_ENABLED !== undefined ? newSettings.AMO_REPORT_ENABLED : currentConfig.AMO_REPORT_ENABLED;
           else val = newSettings[k] !== undefined ? newSettings[k] : currentConfig[k] || '';
           
           await dbPool.query(`
@@ -226,7 +267,12 @@ module.exports = {
         BINOTEL_API_KEY: currentConfig.BINOTEL_API_KEY,
         BINOTEL_API_SECRET: currentConfig.BINOTEL_API_SECRET,
         BINOTEL_COMPANY_ID: currentConfig.BINOTEL_COMPANY_ID,
-        BINOTEL_ACTIVE_MANAGERS: currentConfig.BINOTEL_ACTIVE_MANAGERS
+        BINOTEL_ACTIVE_MANAGERS: currentConfig.BINOTEL_ACTIVE_MANAGERS,
+        AMO_SUBDOMAIN: currentConfig.AMO_SUBDOMAIN,
+        AMO_INTEGRATION_TOKEN: currentConfig.AMO_INTEGRATION_TOKEN,
+        AMO_ACTIVE_MANAGERS: currentConfig.AMO_ACTIVE_MANAGERS,
+        AMO_REPORT_TIME: currentConfig.AMO_REPORT_TIME,
+        AMO_REPORT_ENABLED: currentConfig.AMO_REPORT_ENABLED
       };
       
       fs.writeFileSync(settingsFilePath, JSON.stringify(settingsToBackup, null, 2), 'utf8');
@@ -253,7 +299,12 @@ module.exports = {
       BINOTEL_API_KEY: currentConfig.BINOTEL_API_KEY,
       BINOTEL_API_SECRET: currentConfig.BINOTEL_API_SECRET,
       BINOTEL_COMPANY_ID: currentConfig.BINOTEL_COMPANY_ID,
-      BINOTEL_ACTIVE_MANAGERS: currentConfig.BINOTEL_ACTIVE_MANAGERS
+      BINOTEL_ACTIVE_MANAGERS: currentConfig.BINOTEL_ACTIVE_MANAGERS,
+      AMO_SUBDOMAIN: currentConfig.AMO_SUBDOMAIN,
+      AMO_INTEGRATION_TOKEN: currentConfig.AMO_INTEGRATION_TOKEN,
+      AMO_ACTIVE_MANAGERS: currentConfig.AMO_ACTIVE_MANAGERS,
+      AMO_REPORT_TIME: currentConfig.AMO_REPORT_TIME,
+      AMO_REPORT_ENABLED: currentConfig.AMO_REPORT_ENABLED
     };
   },
   

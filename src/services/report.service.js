@@ -635,6 +635,195 @@ class ReportService {
       return `⚠️ Ошибка формирования отчета по звонкам:\n${err.message}`;
     }
   }
+
+  /**
+   * Fetches statistics from amoCRM API and aggregates report for active managers.
+   * @param {string} [targetDateStr] - Date formatted as "dd.MM.yyyy"
+   * @returns {Promise<string>} Fully formatted Telegram message
+   */
+  async getAmoReportText(targetDateStr = null) {
+    const dateToProcess = targetDateStr || formatter.formatDate(new Date());
+    logger.info(`Generating amoCRM report for managers on date: ${dateToProcess}`);
+
+    // Check credentials first
+    if (!config.AMO_SUBDOMAIN || !config.AMO_INTEGRATION_TOKEN) {
+      return `📊 ОТЧЕТ ПО РАБОТЕ В amoCRM\n\nДата: ${dateToProcess}\n\n⚠️ Учетные данные amoCRM не настроены в панели управления. Пожалуйста, укажите Субдомен и Токен доступа.`;
+    }
+
+    // Parse date parts and calculate local day range timestamps
+    let startTime, stopTime;
+    try {
+      const [day, month, year] = dateToProcess.split('.').map(Number);
+      
+      const getTimestampForLocalTime = (y, m, d, h, min, sec, tz) => {
+        let guess = Date.UTC(y, m - 1, d, h, min, sec);
+        const formatterInstance = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: 'numeric',
+          second: 'numeric',
+          hour12: false
+        });
+        const parts = formatterInstance.formatToParts(new Date(guess));
+        const partVal = (type) => parseInt(parts.find(p => p.type === type).value, 10);
+        const fYear = partVal('year');
+        const fMonth = partVal('month');
+        const fDay = partVal('day');
+        const fHour = partVal('hour') % 24;
+        const fMin = partVal('minute');
+        const fSec = partVal('second');
+        const formattedUTC = Date.UTC(fYear, fMonth - 1, fDay, fHour, fMin, fSec);
+        const diff = formattedUTC - guess;
+        return Math.floor((guess - diff) / 1000);
+      };
+
+      startTime = getTimestampForLocalTime(year, month, day, 0, 0, 0, config.TIMEZONE);
+      stopTime = getTimestampForLocalTime(year, month, day, 23, 59, 59, config.TIMEZONE);
+    } catch (err) {
+      logger.error('Failed to parse date range for amoCRM events:', err.message);
+      return `⚠️ Не удалось разобрать дату ${dateToProcess} для формирования отчета amoCRM.`;
+    }
+
+    try {
+      const amocrmService = require('./amocrm.service');
+      logger.info(`Fetching amoCRM data for range: ${startTime} to ${stopTime}`);
+
+      const [users, tasks, events] = await Promise.all([
+        amocrmService.fetchUsers(),
+        amocrmService.fetchTasks(),
+        amocrmService.fetchEventsForPeriod(startTime, stopTime)
+      ]);
+
+      const activeUserIdsStr = config.AMO_ACTIVE_MANAGERS || '';
+      const activeUserIds = activeUserIdsStr
+        ? activeUserIdsStr.split(',').map(id => id.trim()).filter(id => id.length > 0)
+        : [];
+
+      if (activeUserIds.length === 0) {
+        return `📊 ОТЧЕТ ПО РАБОТЕ В amoCRM\n\nДата: ${dateToProcess}\n\n⚠️ В веб-интерфейсе не выбран ни один менеджер для отображения в отчете.`;
+      }
+
+      const activeManagers = [];
+      const managerIdsSet = new Set(activeUserIds);
+
+      for (const u of users) {
+        const uIdStr = String(u.id);
+        if (managerIdsSet.has(uIdStr)) {
+          activeManagers.push({
+            id: u.id,
+            name: u.name || u.email || uIdStr,
+            email: u.email || '',
+            stats: {
+              actions: 0,
+              tasksTotal: 0,
+              tasksOverdue: 0,
+              tasksToday: 0,
+              tasksFuture: 0
+            }
+          });
+        }
+      }
+
+      if (activeManagers.length === 0) {
+        return `📊 ОТЧЕТ ПО РАБОТЕ В amoCRM\n\nДата: ${dateToProcess}\n\n⚠️ Ни один из выбранных менеджеров не найден в списке пользователей amoCRM.`;
+      }
+
+      const managerMap = {};
+      for (const mgr of activeManagers) {
+        managerMap[mgr.id] = mgr;
+      }
+
+      // Count events (actions)
+      for (const ev of events) {
+        const creatorId = ev.created_by;
+        if (managerMap[creatorId]) {
+          managerMap[creatorId].stats.actions++;
+        }
+      }
+
+      // Count tasks status
+      for (const t of tasks) {
+        const respId = t.responsible_user_id;
+        if (managerMap[respId]) {
+          const stats = managerMap[respId].stats;
+          const deadline = parseInt(t.complete_till || 0, 10);
+          
+          if (!t.is_completed) {
+            stats.tasksTotal++;
+            if (deadline < startTime) {
+              stats.tasksOverdue++;
+            } else if (deadline >= startTime && deadline <= stopTime) {
+              stats.tasksToday++;
+            } else {
+              stats.tasksFuture++;
+            }
+          }
+        }
+      }
+
+      // Sort managers alphabetically by name
+      activeManagers.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+      // Build report text
+      let msg = `📊 ОТЧЕТ ПО РАБОТЕ В amoCRM\n\n`;
+      msg += `Дата: ${dateToProcess}\n`;
+      msg += `━━━━━━━━━━━━━━\n\n`;
+
+      for (const mgr of activeManagers) {
+        msg += `👤 **${mgr.name}**\n`;
+        msg += `• Действий сегодня: ${mgr.stats.actions}\n`;
+        msg += `• Задачи:\n`;
+        msg += `  - Просрочено: ${mgr.stats.tasksOverdue}\n`;
+        msg += `  - На сегодня: ${mgr.stats.tasksToday}\n`;
+        msg += `  - Будущие: ${mgr.stats.tasksFuture}\n`;
+        msg += `  - Всего открытых: ${mgr.stats.tasksTotal}\n\n`;
+      }
+
+      msg += `━━━━━━━━━━━━━━\n`;
+      msg += `Отчет сформирован автоматически`;
+
+      return msg;
+    } catch (err) {
+      logger.error('Failed to generate amoCRM report:', err.message);
+      return `⚠️ Ошибка формирования отчета amoCRM:\n${err.message}`;
+    }
+  }
+
+  /**
+   * Generates amoCRM report for a specific date and sends it to Telegram.
+   * @param {string} [targetDateStr] - Format "dd.MM.yyyy"
+   * @returns {Promise<{success: boolean, text: string, telegramResults?: any, error?: string}>}
+   */
+  async generateAndSendAmoReport(targetDateStr = null) {
+    try {
+      const dateToProcess = targetDateStr || formatter.formatDate(new Date());
+      logger.info(`Running automated amoCRM report generation for date: ${dateToProcess}`);
+
+      const reportText = await this.getAmoReportText(dateToProcess);
+      
+      logger.info('--- GENERATED amoCRM REPORT ---');
+      console.log(reportText);
+      logger.info('------------------------');
+
+      const telegramResults = await telegramService.sendReport(reportText);
+
+      return {
+        success: true,
+        text: reportText,
+        telegramResults
+      };
+    } catch (error) {
+      logger.error('Failed to generate or send amoCRM report:', error.message);
+      return {
+        success: false,
+        error: error.message,
+        text: `Ошибка генерации отчета amoCRM: ${error.message}`
+      };
+    }
+  }
 }
 
 module.exports = new ReportService();

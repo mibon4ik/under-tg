@@ -118,6 +118,12 @@ app.post('/api/settings', authMiddleware, async (req, res) => {
     const success = await config.saveSettings(newSettings);
     if (success) {
       logger.info('System settings successfully updated dynamically via web dashboard.');
+      try {
+        const schedulerService = require('./services/scheduler.service');
+        schedulerService.restart();
+      } catch (schedErr) {
+        logger.error('Failed to restart scheduler on settings save:', schedErr.message);
+      }
       res.json({ success: true, message: 'Settings saved successfully.' });
     } else {
       res.status(500).json({ success: false, error: 'Failed to write settings file to disk.' });
@@ -366,6 +372,165 @@ app.post('/api/binotel/managers', authMiddleware, async (req, res) => {
   } catch (err) {
     logger.error('Error in POST /api/binotel/managers:', err.message);
     res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Fetch all managers from amoCRM and merge with active whitelist configurations
+ * GET /api/amocrm/managers
+ */
+app.get('/api/amocrm/managers', authMiddleware, async (req, res) => {
+  try {
+    if (!config.AMO_SUBDOMAIN || !config.AMO_INTEGRATION_TOKEN) {
+      return res.json({ 
+        success: false, 
+        error: 'credentials_missing',
+        message: 'amoCRM credentials are not configured.' 
+      });
+    }
+
+    const amocrmService = require('./services/amocrm.service');
+    const users = await amocrmService.fetchUsers();
+    
+    const activeList = config.AMO_ACTIVE_MANAGERS 
+      ? config.AMO_ACTIVE_MANAGERS.split(',').map(id => id.trim()).filter(id => id.length > 0)
+      : [];
+    const activeSet = new Set(activeList);
+
+    const managers = [];
+    for (const u of users) {
+      const uIdStr = String(u.id);
+      managers.push({
+        id: u.id,
+        name: u.name || u.email || uIdStr,
+        email: u.email || '',
+        active: activeSet.has(uIdStr)
+      });
+    }
+
+    // Sort alphabetically by name
+    managers.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+
+    res.json({
+      success: true,
+      managers
+    });
+  } catch (err) {
+    logger.error('Error in GET /api/amocrm/managers:', err.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'amocrm_error', 
+      message: err.message 
+    });
+  }
+});
+
+/**
+ * Save whitelisted active amoCRM managers selection
+ * POST /api/amocrm/managers
+ */
+app.post('/api/amocrm/managers', authMiddleware, async (req, res) => {
+  const { activeIds } = req.body;
+  if (!Array.isArray(activeIds)) {
+    return res.status(400).json({ success: false, error: 'activeIds must be an array' });
+  }
+
+  try {
+    const listString = activeIds.map(id => String(id).trim()).join(',');
+    const success = await config.saveSettings({
+      ...config.getRawSettings(),
+      AMO_ACTIVE_MANAGERS: listString
+    });
+
+    if (success) {
+      res.json({ success: true, message: 'Active amoCRM managers updated successfully.' });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to write settings database.' });
+    }
+  } catch (err) {
+    logger.error('Error in POST /api/amocrm/managers:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Test amoCRM connection live
+ * POST /api/test-amocrm
+ */
+app.post('/api/test-amocrm', authMiddleware, async (req, res) => {
+  const { AMO_SUBDOMAIN, AMO_INTEGRATION_TOKEN } = req.body;
+  if (!AMO_SUBDOMAIN || !AMO_INTEGRATION_TOKEN) {
+    return res.status(400).json({ success: false, error: 'AMO_SUBDOMAIN and AMO_INTEGRATION_TOKEN are required' });
+  }
+
+  try {
+    // Temporarily override keys in configuration to test connection
+    const originalSubdomain = config.AMO_SUBDOMAIN;
+    const originalToken = config.AMO_INTEGRATION_TOKEN;
+    
+    await config.saveSettings({
+      ...config.getRawSettings(),
+      AMO_SUBDOMAIN,
+      AMO_INTEGRATION_TOKEN
+    });
+
+    const amocrmService = require('./services/amocrm.service');
+    const users = await amocrmService.fetchUsers();
+
+    // Restore original keys in memory
+    await config.saveSettings({
+      ...config.getRawSettings(),
+      AMO_SUBDOMAIN: originalSubdomain,
+      AMO_INTEGRATION_TOKEN: originalToken
+    });
+
+    res.json({
+      success: true,
+      usersCount: users.length,
+      message: `Успешное подключение! Найдено пользователей: ${users.length}.`
+    });
+  } catch (err) {
+    logger.error('Error in /api/test-amocrm:', err.message);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * Manual trigger endpoint for amoCRM report sending
+ * POST /send-amocrm-report
+ * Accepts optional JSON body: { "date": "26.05.2026" }
+ */
+app.post('/send-amocrm-report', authMiddleware, async (req, res) => {
+  logger.info('Manual amoCRM report trigger endpoint received a request.');
+  
+  const targetDate = req.body && req.body.date ? String(req.body.date).trim() : null;
+
+  try {
+    const result = await reportService.generateAndSendAmoReport(targetDate);
+    
+    if (result.success) {
+      return res.json({
+        success: true,
+        message: `amoCRM report generated successfully for date: ${targetDate || 'today'}.`,
+        telegram: result.telegramResults,
+        reportPreview: result.text
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        error: result.error,
+        message: 'Failed to process amoCRM report.'
+      });
+    }
+  } catch (err) {
+    logger.error('Error occurred in /send-amocrm-report endpoint handler:', err.message);
+    return res.status(500).json({
+      success: false,
+      error: err.message
+    });
   }
 });
 

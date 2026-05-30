@@ -44,6 +44,22 @@ document.addEventListener('DOMContentLoaded', () => {
   const managersActions = document.getElementById('managersActions');
   const btnSaveManagers = document.getElementById('btnSaveManagers');
   const btnSyncManagers = document.getElementById('btnSyncManagers');
+
+  // amoCRM Elements
+  const amoSubdomainInput = document.getElementById('amoSubdomain');
+  const amoReportTimeInput = document.getElementById('amoReportTime');
+  const amoIntegrationTokenInput = document.getElementById('amoIntegrationToken');
+  const amoReportEnabledInput = document.getElementById('amoReportEnabled');
+  const btnSaveAmoCrm = document.getElementById('btnSaveAmoCrm');
+  const btnTestAmoCrm = document.getElementById('btnTestAmoCrm');
+
+  const amoManagersLoading = document.getElementById('amoManagersLoading');
+  const amoManagersPlaceholder = document.getElementById('amoManagersPlaceholder');
+  const amoManagersError = document.getElementById('amoManagersError');
+  const amoManagersList = document.getElementById('amoManagersList');
+  const amoManagersActions = document.getElementById('amoManagersActions');
+  const btnSaveAmoManagers = document.getElementById('btnSaveAmoManagers');
+  const btnSyncAmoManagers = document.getElementById('btnSyncAmoManagers');
   
   const toastContainer = document.getElementById('toastContainer');
   const indicatorDot = document.querySelector('.indicator-dot');
@@ -137,6 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
           
           // Auto-fetch Binotel managers on load
           fetchAndRenderManagers(false);
+          
+          // Auto-fetch amoCRM managers on load
+          fetchAndRenderAmoManagers(false);
         }
       } else {
         localStorage.removeItem('dashboard_token');
@@ -204,6 +223,12 @@ document.addEventListener('DOMContentLoaded', () => {
     binotelApiKeyInput.value = settings.BINOTEL_API_KEY || '';
     binotelApiSecretInput.value = settings.BINOTEL_API_SECRET || '';
     binotelCompanyIdInput.value = settings.BINOTEL_COMPANY_ID || '';
+
+    // amoCRM Fields
+    amoSubdomainInput.value = settings.AMO_SUBDOMAIN || '';
+    amoReportTimeInput.value = settings.AMO_REPORT_TIME || '20:00';
+    amoIntegrationTokenInput.value = settings.AMO_INTEGRATION_TOKEN || '';
+    amoReportEnabledInput.checked = settings.AMO_REPORT_ENABLED !== 'false';
   }
 
   // 3. Fetch configuration settings (fallback trigger for updates)
@@ -355,7 +380,14 @@ document.addEventListener('DOMContentLoaded', () => {
       BINOTEL_API_KEY: activeSettings ? activeSettings.BINOTEL_API_KEY : '',
       BINOTEL_API_SECRET: activeSettings ? activeSettings.BINOTEL_API_SECRET : '',
       BINOTEL_COMPANY_ID: activeSettings ? activeSettings.BINOTEL_COMPANY_ID : '',
-      BINOTEL_ACTIVE_MANAGERS: activeSettings ? activeSettings.BINOTEL_ACTIVE_MANAGERS : ''
+      BINOTEL_ACTIVE_MANAGERS: activeSettings ? activeSettings.BINOTEL_ACTIVE_MANAGERS : '',
+
+      // amoCRM settings
+      AMO_SUBDOMAIN: amoSubdomainInput.value.trim(),
+      AMO_REPORT_TIME: amoReportTimeInput.value.trim(),
+      AMO_INTEGRATION_TOKEN: amoIntegrationTokenInput.value.trim(),
+      AMO_REPORT_ENABLED: amoReportEnabledInput.checked ? 'true' : 'false',
+      AMO_ACTIVE_MANAGERS: activeSettings ? activeSettings.AMO_ACTIVE_MANAGERS : ''
     };
 
     try {
@@ -679,6 +711,209 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnSyncManagers.addEventListener('click', () => {
     fetchAndRenderManagers(true);
+  });
+
+  // 12. Fetch and Render amoCRM Employees List
+  async function fetchAndRenderAmoManagers(showNotice = false) {
+    const subdomain = amoSubdomainInput.value.trim();
+    const token = amoIntegrationTokenInput.value.trim();
+
+    if (!subdomain || !token) {
+      amoManagersPlaceholder.classList.remove('hidden');
+      amoManagersLoading.classList.add('hidden');
+      amoManagersError.classList.add('hidden');
+      amoManagersList.classList.add('hidden');
+      amoManagersActions.classList.add('hidden');
+      return;
+    }
+
+    amoManagersPlaceholder.classList.add('hidden');
+    amoManagersLoading.classList.remove('hidden');
+    amoManagersError.classList.add('hidden');
+    amoManagersList.classList.add('hidden');
+    amoManagersActions.classList.add('hidden');
+
+    if (showNotice) {
+      showToast('amoCRM', 'Загрузка списка сотрудников...', 'info');
+    }
+
+    try {
+      const response = await fetch(getEndpoint('/api/amocrm/managers'), {
+        headers: { 'Authorization': activeToken }
+      });
+      
+      const data = await response.json();
+      amoManagersLoading.classList.add('hidden');
+
+      if (data && data.success) {
+        amoManagersList.innerHTML = '';
+        if (!data.managers || data.managers.length === 0) {
+          amoManagersList.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">Сотрудники не найдены.</div>';
+        } else {
+          data.managers.forEach(emp => {
+            const div = document.createElement('div');
+            div.className = 'manager-item';
+            div.innerHTML = `
+              <div class="manager-info">
+                <span class="manager-name" title="${emp.name}">${emp.name}</span>
+                <span class="manager-email" title="${emp.email}">${emp.email || 'Нет email'}</span>
+                <span class="manager-internal">ID: ${emp.id}</span>
+              </div>
+              <label class="switch">
+                <input type="checkbox" class="amo-manager-checkbox" data-id="${emp.id}" ${emp.active ? 'checked' : ''}>
+                <span class="slider"></span>
+              </label>
+            `;
+            amoManagersList.appendChild(div);
+          });
+        }
+        amoManagersList.classList.remove('hidden');
+        amoManagersActions.classList.remove('hidden');
+        if (showNotice) {
+          showToast('Готово!', `Загружено ${data.managers.length} сотрудников из amoCRM.`, 'success');
+        }
+      } else {
+        if (data.error === 'credentials_missing') {
+          amoManagersPlaceholder.classList.remove('hidden');
+        } else {
+          amoManagersError.classList.remove('hidden');
+          if (showNotice) {
+            showToast('Ошибка amoCRM API', data.message || 'Не удалось связаться с amoCRM.', 'error');
+          }
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      amoManagersLoading.classList.add('hidden');
+      amoManagersError.classList.remove('hidden');
+      if (showNotice) {
+        showToast('Ошибка сети', 'Не удалось получить данные с сервера.', 'error');
+      }
+    }
+  }
+
+  // 13. Save amoCRM Keys Action
+  btnSaveAmoCrm.addEventListener('click', async () => {
+    const subdomain = amoSubdomainInput.value.trim();
+    const token = amoIntegrationTokenInput.value.trim();
+    const time = amoReportTimeInput.value.trim();
+    const enabled = amoReportEnabledInput.checked ? 'true' : 'false';
+
+    if (!subdomain || !token) {
+      showToast('Внимание', 'Заполните Субдомен и Токен доступа для сохранения.', 'error');
+      return;
+    }
+
+    setLoadingState(btnSaveAmoCrm, true);
+
+    const payload = {
+      ...activeSettings,
+      AMO_SUBDOMAIN: subdomain,
+      AMO_INTEGRATION_TOKEN: token,
+      AMO_REPORT_TIME: time,
+      AMO_REPORT_ENABLED: enabled
+    };
+
+    try {
+      const response = await fetch(getEndpoint('/api/settings'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activeToken
+         },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+
+      if (data && data.success) {
+        showToast('Успешно', 'Авторизационные данные amoCRM сохранены!', 'success');
+        activeSettings = payload;
+        await fetchAndRenderAmoManagers(true);
+      } else {
+        throw new Error(data.error || 'Неизвестная ошибка сервера');
+      }
+    } catch (err) {
+      showToast('Ошибка сохранения', err.message, 'error');
+    } finally {
+      setLoadingState(btnSaveAmoCrm, false);
+    }
+  });
+
+  // 14. Test amoCRM Connection Action
+  btnTestAmoCrm.addEventListener('click', async () => {
+    const subdomain = amoSubdomainInput.value.trim();
+    const token = amoIntegrationTokenInput.value.trim();
+
+    if (!subdomain || !token) {
+      showToast('Внимание', 'Пожалуйста, заполните поля Субдомен и Токен перед тестом.', 'error');
+      return;
+    }
+
+    setLoadingState(btnTestAmoCrm, true);
+
+    try {
+      const response = await fetch(getEndpoint('/api/test-amocrm'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activeToken
+        },
+        body: JSON.stringify({ AMO_SUBDOMAIN: subdomain, AMO_INTEGRATION_TOKEN: token })
+      });
+      const data = await response.json();
+
+      if (data && data.success) {
+        showToast('Успех!', data.message || 'Подключение к amoCRM выполнено успешно!', 'success');
+      } else {
+        throw new Error(data.error || 'Ошибка подключения.');
+      }
+    } catch (err) {
+      showToast('Ошибка amoCRM', err.message, 'error');
+    } finally {
+      setLoadingState(btnTestAmoCrm, false);
+    }
+  });
+
+  // 15. Save whitelist active amoCRM managers
+  btnSaveAmoManagers.addEventListener('click', async () => {
+    const checkboxes = amoManagersList.querySelectorAll('.amo-manager-checkbox');
+    const activeIds = [];
+    checkboxes.forEach(cb => {
+      if (cb.checked) {
+        activeIds.push(cb.getAttribute('data-id'));
+      }
+    });
+
+    setLoadingState(btnSaveAmoManagers, true);
+
+    try {
+      const response = await fetch(getEndpoint('/api/amocrm/managers'), {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': activeToken
+        },
+        body: JSON.stringify({ activeIds })
+      });
+      const data = await response.json();
+
+      if (data && data.success) {
+        showToast('Сохранено', 'Список активных менеджеров amoCRM сохранен в базу данных!', 'success');
+        if (activeSettings) {
+          activeSettings.AMO_ACTIVE_MANAGERS = activeIds.join(',');
+        }
+      } else {
+        throw new Error(data.error || 'Неизвестная ошибка');
+      }
+    } catch (err) {
+      showToast('Ошибка сохранения', err.message, 'error');
+    } finally {
+      setLoadingState(btnSaveAmoManagers, false);
+    }
+  });
+
+  btnSyncAmoManagers.addEventListener('click', () => {
+    fetchAndRenderAmoManagers(true);
   });
 
   // Trigger Auth check immediately

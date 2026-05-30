@@ -222,6 +222,95 @@
           </div>
         </div>
 
+        <!-- amoCRM Integration Card -->
+        <div class="card amocrm-card full-width">
+          <div class="card-title-bar">
+            <span class="card-icon">📊</span>
+            <h3>Интеграция с CRM-системой amoCRM</h3>
+          </div>
+          
+          <p class="description">Введите учетные данные amoCRM для загрузки сотрудников, фильтрации отчетов по действиям/задачам и настройки автоотправки.</p>
+          
+          <div class="inputs-row">
+            <div class="input-group">
+              <label for="amoSubdomain">Субдомен amoCRM</label>
+              <input type="text" id="amoSubdomain" placeholder="Например: triceraton92">
+              <span class="input-hint">Только имя (часть до .amocrm.ru)</span>
+            </div>
+            
+            <div class="input-group">
+              <label for="amoReportTime">Время отправки отчета</label>
+              <input type="time" id="amoReportTime" value="20:00">
+              <span class="input-hint">В формате ЧЧ:ММ (по часовому поясу TIMEZONE)</span>
+            </div>
+            
+            <div class="input-group" style="grid-column: span 2;">
+              <label for="amoIntegrationToken">Токен авторизации (JWT)</label>
+              <textarea id="amoIntegrationToken" placeholder="Вставьте длинный JWT access token интеграции..." style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 10px; padding: 0.85rem 1rem; font-family: monospace; font-size: 0.85rem; color: #fff; height: 120px; resize: vertical; transition: all 0.3s;"></textarea>
+              <span class="input-hint">Долгоживущий токен доступа из настроек интеграции amoCRM</span>
+            </div>
+            
+            <div class="input-group" style="grid-column: span 2; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; margin-top: 0.5rem;">
+              <label class="switch">
+                <input type="checkbox" id="amoReportEnabled" checked>
+                <span class="slider"></span>
+              </label>
+              <div>
+                <span style="font-weight: 600; color: #fff; font-size: 0.95rem; display: block;">Автоматическая автоотправка отчета</span>
+                <span class="input-hint">Включить/выключить отправку ежедневного отчета по расписанию</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button type="button" id="btnSaveAmoCrm" class="btn btn-secondary">
+              <span class="btn-text">Сохранить ключи amoCRM</span>
+              <span class="spinner"></span>
+            </button>
+            <button type="button" id="btnTestAmoCrm" class="btn btn-secondary">
+              <span class="btn-text">Проверить amoCRM</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="managers-selection-block">
+            <h4 style="margin-bottom: 0.5rem; font-weight: 600; font-size: 1.1rem; color: #fff;">Выбор менеджеров для отчетов amoCRM</h4>
+            <p class="description">Укажите тумблерами, по каким именно менеджерам amoCRM присылать ежедневные отчеты.</p>
+            
+            <div class="managers-list-container" style="margin-top: 1rem;">
+              <div id="amoManagersLoading" class="loading-state hidden">
+                <span class="spinner" style="display: inline-block; position: relative; margin-right: 8px;"></span>
+                <span>Загрузка сотрудников из amoCRM...</span>
+              </div>
+              
+              <div id="amoManagersPlaceholder" class="loading-state">
+                <span>🔒 Сохраните валидные ключи для загрузки списка сотрудников amoCRM.</span>
+              </div>
+              
+              <div id="amoManagersError" class="error-state hidden">
+                <p>⚠️ Ошибка подключения к API amoCRM. Проверьте правильность токена и субдомена.</p>
+              </div>
+              
+              <div id="amoManagersList" class="managers-grid hidden">
+                <!-- Dynamically populated employees -->
+              </div>
+            </div>
+          </div>
+
+          <div class="card-actions hidden" id="amoManagersActions">
+            <button type="button" id="btnSaveAmoManagers" class="btn btn-primary">
+              <span class="btn-text">Сохранить выбор менеджеров amoCRM</span>
+              <span class="spinner"></span>
+            </button>
+            <button type="button" id="btnSyncAmoManagers" class="btn btn-secondary" title="Синхронизировать">
+              <span class="btn-text">Обновить список</span>
+              <span class="spinner"></span>
+            </button>
+          </div>
+        </div>
+
         <!-- System Settings Section -->
         <div class="card system-card full-width">
           <div class="card-title-bar">
