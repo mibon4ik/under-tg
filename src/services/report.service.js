@@ -745,6 +745,7 @@ class ReportService {
       }
 
       // Count tasks status
+      const now = Math.floor(Date.now() / 1000);
       for (const t of tasks) {
         const respId = t.responsible_user_id;
         if (managerMap[respId]) {
@@ -753,9 +754,9 @@ class ReportService {
           
           if (!t.is_completed) {
             stats.tasksTotal++;
-            if (deadline < startTime) {
+            if (deadline > 0 && deadline < now) {
               stats.tasksOverdue++;
-            } else if (deadline >= startTime && deadline <= stopTime) {
+            } else if (deadline >= now && deadline <= stopTime) {
               stats.tasksToday++;
             } else {
               stats.tasksFuture++;
