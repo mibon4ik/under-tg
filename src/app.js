@@ -1,6 +1,9 @@
 const express = require('express');
 const axios = require('axios');
 const path = require('path');
+const fs = require('fs');
+const { execFile } = require('child_process');
+const multer = require('multer');
 const reportService = require('./services/report.service');
 const logger = require('./utils/logger');
 const telegramService = require('./services/telegram.service');
@@ -8,6 +11,28 @@ const config = require('./config/config');
 const authService = require('./services/auth.service');
 
 const app = express();
+
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+// Multer storage configuration for temporary files
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
+});
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
 
 // Parse JSON requests
 app.use(express.json());
@@ -532,6 +557,144 @@ app.post('/send-amocrm-report', authMiddleware, async (req, res) => {
       error: err.message
     });
   }
+});
+
+/**
+ * Deduplicate contacts file against amoCRM
+ * POST /api/amocrm/deduplicate
+ */
+app.post('/api/amocrm/deduplicate', authMiddleware, upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'Файл не загружен.' });
+  }
+
+  const phoneCol = req.body.phoneColumn || 'Рабочий телефон';
+  
+  // Use current configuration keys
+  const subdomain = config.AMO_SUBDOMAIN;
+  const token = config.AMO_INTEGRATION_TOKEN;
+
+  if (!subdomain || !token) {
+    // Remove the uploaded file first
+    try { fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(400).json({ 
+      success: false, 
+      error: 'Учетные данные amoCRM не настроены. Пожалуйста, сохраните субдомен и токен доступа в настройках интеграции.' 
+    });
+  }
+
+  const inputFilePath = req.file.path;
+  const outputFileName = `clean_import-${Date.now()}.xlsx`;
+  const outputFilePath = path.join(uploadDir, outputFileName);
+  const errorLogFileName = `dedup_errors-${Date.now()}.log`;
+  const errorLogPath = path.join(uploadDir, errorLogFileName);
+
+  const pythonScript = path.join(__dirname, 'services/dedup.py');
+
+  // Launch python process
+  const args = [
+    pythonScript,
+    '--file', inputFilePath,
+    '--output', outputFilePath,
+    '--subdomain', subdomain,
+    '--token', token,
+    '--phone-col', phoneCol,
+    '--error-log', errorLogPath
+  ];
+
+  logger.info(`Running python script for deduplication of file: ${req.file.originalname}`);
+
+  execFile('python', args, (error, stdout, stderr) => {
+    // Always clean up the uploaded input file
+    try { fs.unlinkSync(inputFilePath); } catch (e) {}
+
+    if (stderr) {
+      logger.error(`Python stderr: ${stderr}`);
+    }
+
+    if (error) {
+      logger.error(`Python process failed: ${error.message}`);
+      // Clean up files in case of failure
+      try { fs.unlinkSync(outputFilePath); } catch (e) {}
+      try { fs.unlinkSync(errorLogPath); } catch (e) {}
+      
+      return res.status(500).json({ 
+        success: false, 
+        error: `Ошибка при обработке файла: ${error.message}. Убедитесь, что все зависимости Python установлены.` 
+      });
+    }
+
+    try {
+      const lines = stdout.trim().split('\n');
+      const lastLine = lines[lines.length - 1];
+      const result = JSON.parse(lastLine);
+
+      if (result.success) {
+        res.json({
+          success: true,
+          stats: result.stats,
+          cleanFileId: outputFileName,
+          errorLogId: errorLogFileName
+        });
+      } else {
+        try { fs.unlinkSync(outputFilePath); } catch (e) {}
+        try { fs.unlinkSync(errorLogPath); } catch (e) {}
+        res.status(400).json({
+          success: false,
+          error: result.error || 'Неизвестная ошибка в скрипте дедупликации.'
+        });
+      }
+    } catch (parseErr) {
+      logger.error(`Failed to parse Python stdout: ${stdout}`);
+      try { fs.unlinkSync(outputFilePath); } catch (e) {}
+      try { fs.unlinkSync(errorLogPath); } catch (e) {}
+      res.status(500).json({
+        success: false,
+        error: 'Не удалось прочитать результаты дедупликации.'
+      });
+    }
+  });
+});
+
+/**
+ * Download deduplicated clean file
+ * GET /api/amocrm/download/:fileId
+ */
+app.get('/api/amocrm/download/:fileId', authMiddleware, (req, res) => {
+  const fileId = req.params.fileId;
+  if (fileId.includes('..') || fileId.includes('/') || fileId.includes('\\')) {
+    return res.status(400).json({ error: 'Неверный идентификатор файла.' });
+  }
+
+  const filePath = path.join(uploadDir, fileId);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Файл не найден или срок его хранения истек.' });
+  }
+
+  res.download(filePath, 'clean_import.xlsx', (err) => {
+    try { fs.unlinkSync(filePath); } catch (e) {}
+  });
+});
+
+/**
+ * Download/view deduplication error logs
+ * GET /api/amocrm/log/:logId
+ */
+app.get('/api/amocrm/log/:logId', authMiddleware, (req, res) => {
+  const logId = req.params.logId;
+  if (logId.includes('..') || logId.includes('/') || logId.includes('\\')) {
+    return res.status(400).json({ error: 'Неверный идентификатор лога.' });
+  }
+
+  const logPath = path.join(uploadDir, logId);
+  if (!fs.existsSync(logPath)) {
+    return res.status(404).json({ error: 'Лог не найден или срок его хранения истек.' });
+  }
+
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.sendFile(logPath, (err) => {
+    try { fs.unlinkSync(logPath); } catch (e) {}
+  });
 });
 
 /**

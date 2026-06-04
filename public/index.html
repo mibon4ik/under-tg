@@ -315,6 +315,85 @@
           </div>
         </div>
 
+        <!-- amoCRM Deduplication Card -->
+        <div class="card amocrm-dedup-card full-width">
+          <div class="card-title-bar">
+            <span class="card-icon">🧹</span>
+            <h3>Дедупликация и очистка импорта</h3>
+          </div>
+          
+          <p class="description">Загрузите файл (XLSX или CSV), содержащий контакты для импорта. Скрипт сопоставит номера телефонов с актуальной базой контактов amoCRM по всем воронкам и отфильтрует дубликаты.</p>
+          
+          <div class="inputs-row" style="grid-template-columns: 1fr 1fr; margin-bottom: 1.5rem;">
+            <div class="input-group">
+              <label for="dedupPhoneColumn">Название столбца телефона в файле</label>
+              <input type="text" id="dedupPhoneColumn" value="Рабочий телефон" placeholder="Например: Рабочий телефон">
+              <span class="input-hint">Регистронезависимое имя столбца с номерами в таблице.</span>
+            </div>
+            
+            <div class="input-group">
+              <label>Файл для обработки (XLSX, CSV)</label>
+              <div class="file-upload-zone" id="dropZone">
+                <span class="upload-icon">📂</span>
+                <span class="upload-text" id="uploadText">Перетащите файл сюда или кликните для выбора</span>
+                <input type="file" id="dedupFile" accept=".xlsx, .xls, .csv" style="display: none;">
+              </div>
+            </div>
+          </div>
+
+          <div class="card-actions">
+            <button type="button" id="btnRunDedup" class="btn btn-primary" disabled>
+              <span class="btn-text">Запустить дедупликацию</span>
+              <span class="spinner"></span>
+            </button>
+            <button type="button" id="btnClearFile" class="btn btn-secondary hidden">
+              <span class="btn-text">Сбросить файл</span>
+            </button>
+          </div>
+
+          <!-- Results Section (Hidden by default) -->
+          <div id="dedupResults" class="dedup-results-section hidden">
+            <div class="divider"></div>
+            <h4 style="margin-bottom: 1rem; font-weight: 600; font-size: 1.1rem; color: #fff;">Результаты обработки</h4>
+            
+            <div class="stats-grid">
+              <div class="stat-box">
+                <span class="stat-value" id="statTotalRows">0</span>
+                <span class="stat-label">Всего строк в файле</span>
+              </div>
+              <div class="stat-box">
+                <span class="stat-value" id="statCrmContacts">0</span>
+                <span class="stat-label">Контактов в amoCRM</span>
+              </div>
+              <div class="stat-box alert">
+                <span class="stat-value" id="statCrmDupes">0</span>
+                <span class="stat-label">Дубликатов в CRM</span>
+              </div>
+              <div class="stat-box alert">
+                <span class="stat-value" id="statFileDupes">0</span>
+                <span class="stat-label">Дубликатов в файле</span>
+              </div>
+              <div class="stat-box warning">
+                <span class="stat-value" id="statInvalidFormat">0</span>
+                <span class="stat-label">Некорректных номеров</span>
+              </div>
+              <div class="stat-box success">
+                <span class="stat-value" id="statCleanLeads">0</span>
+                <span class="stat-label">Уникальных новых номеров</span>
+              </div>
+            </div>
+
+            <div class="results-actions" style="margin-top: 1.5rem; display: flex; gap: 1rem;">
+              <button type="button" id="btnDownloadClean" class="btn btn-primary btn-success">
+                <span>📥 Скачать clean_import.xlsx</span>
+              </button>
+              <button type="button" id="btnDownloadLog" class="btn btn-secondary">
+                <span>📄 Скачать лог ошибок</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- System Settings Section -->
         <div class="card system-card full-width">
           <div class="card-title-bar">

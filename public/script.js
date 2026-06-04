@@ -919,6 +919,190 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchAndRenderAmoManagers(true);
   });
 
+  // --- amoCRM Deduplication & Filtering ---
+  const dropZone = document.getElementById('dropZone');
+  const dedupFileInput = document.getElementById('dedupFile');
+  const uploadText = document.getElementById('uploadText');
+  const btnRunDedup = document.getElementById('btnRunDedup');
+  const btnClearFile = document.getElementById('btnClearFile');
+  const dedupPhoneColumnInput = document.getElementById('dedupPhoneColumn');
+  
+  const dedupResults = document.getElementById('dedupResults');
+  const statTotalRows = document.getElementById('statTotalRows');
+  const statCrmContacts = document.getElementById('statCrmContacts');
+  const statCrmDupes = document.getElementById('statCrmDupes');
+  const statFileDupes = document.getElementById('statFileDupes');
+  const statInvalidFormat = document.getElementById('statInvalidFormat');
+  const statCleanLeads = document.getElementById('statCleanLeads');
+  
+  const btnDownloadClean = document.getElementById('btnDownloadClean');
+  const btnDownloadLog = document.getElementById('btnDownloadLog');
+
+  let selectedFile = null;
+  let cleanFileId = null;
+  let errorLogId = null;
+
+  // Clicking on drop zone triggers file input
+  if (dropZone) {
+    dropZone.addEventListener('click', () => {
+      dedupFileInput.click();
+    });
+
+    // Handle file selection
+    dedupFileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) {
+        handleFileSelected(e.target.files[0]);
+      }
+    });
+
+    // Drag & Drop handlers
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) {
+        handleFileSelected(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  function handleFileSelected(file) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+      showToast('Ошибка файла', 'Допускаются только файлы Excel (.xlsx, .xls) или CSV (.csv).', 'error');
+      return;
+    }
+
+    selectedFile = file;
+    uploadText.textContent = `Выбран файл: ${file.name} (${(file.size / 1024).toFixed(1)} КБ)`;
+    btnRunDedup.disabled = false;
+    btnClearFile.classList.remove('hidden');
+    
+    // Hide previous results on new selection
+    dedupResults.classList.add('hidden');
+    cleanFileId = null;
+    errorLogId = null;
+  }
+
+  if (btnClearFile) {
+    btnClearFile.addEventListener('click', () => {
+      resetDedupForm();
+    });
+  }
+
+  function resetDedupForm() {
+    selectedFile = null;
+    dedupFileInput.value = '';
+    uploadText.textContent = 'Перетащите файл сюда или кликните для выбора';
+    btnRunDedup.disabled = true;
+    btnClearFile.classList.add('hidden');
+    dedupResults.classList.add('hidden');
+    cleanFileId = null;
+    errorLogId = null;
+  }
+
+  // Running the Deduplication process
+  if (btnRunDedup) {
+    btnRunDedup.addEventListener('click', async () => {
+      if (!selectedFile) return;
+
+      setLoadingState(btnRunDedup, true);
+      showToast('Дедупликация', 'Начался процесс выгрузки из amoCRM и дедупликации...', 'info');
+
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('phoneColumn', dedupPhoneColumnInput.value.trim());
+
+      try {
+        const response = await fetch(getEndpoint('/api/amocrm/deduplicate'), {
+          method: 'POST',
+          headers: {
+            'Authorization': activeToken
+          },
+          body: formData
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          showToast('Успех!', 'Файл успешно очищен от дубликатов!', 'success');
+          
+          // Populate stats
+          statTotalRows.textContent = data.stats.total_rows;
+          statCrmContacts.textContent = data.stats.crm_contacts_count;
+          statCrmDupes.textContent = data.stats.crm_duplicates;
+          statFileDupes.textContent = data.stats.file_duplicates;
+          statInvalidFormat.textContent = data.stats.invalid_format;
+          statCleanLeads.textContent = data.stats.clean_leads;
+          
+          cleanFileId = data.cleanFileId;
+          errorLogId = data.errorLogId;
+
+          // Show results
+          dedupResults.classList.remove('hidden');
+        } else {
+          throw new Error(data.error || 'Произошла ошибка при обработке.');
+        }
+      } catch (err) {
+        showToast('Ошибка дедупликации', err.message, 'error');
+      } finally {
+        setLoadingState(btnRunDedup, false);
+      }
+    });
+  }
+
+  // Download cleaned file action
+  if (btnDownloadClean) {
+    btnDownloadClean.addEventListener('click', () => {
+      if (!cleanFileId) return;
+      const url = getEndpoint(`/api/amocrm/download/${cleanFileId}`);
+      downloadProtectedFile(url, 'clean_import.xlsx');
+    });
+  }
+
+  // View/Download error log action
+  if (btnDownloadLog) {
+    btnDownloadLog.addEventListener('click', () => {
+      if (!errorLogId) return;
+      const url = getEndpoint(`/api/amocrm/log/${errorLogId}`);
+      downloadProtectedFile(url, 'dedup_errors.log');
+    });
+  }
+
+  async function downloadProtectedFile(url, filename) {
+    try {
+      showToast('Скачивание', 'Подготовка файла...', 'info');
+      const response = await fetch(url, {
+        headers: { 'Authorization': activeToken }
+      });
+      
+      if (!response.ok) {
+        const errText = await response.json();
+        throw new Error(errText.error || 'Ошибка скачивания');
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      showToast('Ошибка', `Не удалось скачать файл: ${err.message}`, 'error');
+    }
+  }
+
   // Trigger Auth check immediately
   checkAuthAndLoad();
 });
