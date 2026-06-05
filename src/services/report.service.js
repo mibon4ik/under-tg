@@ -94,8 +94,14 @@ class ReportService {
     const cancellationsGross = cancellations.gross;
     const cancellationsSales = cancellations.sales;
 
-    let msg = `💰 ВАЛОВАЯ ПРИБЫЛЬ ЗА СЕГОДНЯ\n\n`;
-    msg += `Дата: ${dateToProcess}\n\n`;
+    // Clean and extract unique sheet names for the display header
+    const uniqueCleanSheets = [...new Set(reportData.activeSheets.map(s => 
+      s.replace(/\s*\(продления\)/gi, '').replace(/\s*\(отмены\)/gi, '').trim()
+    ))];
+    const sheetsStr = uniqueCleanSheets.join(' / ');
+
+    let msg = `Дата: ${dateToProcess}\n`;
+    msg += `Лист: ${sheetsStr}\n\n`;
     msg += `📈 Продления (активные продажи):\n`;
     msg += `• Вал: ${formatter.formatCurrency(renewalsGross)}\n`;
     msg += `• Закрыто сделок: ${renewalsSales}\n\n`;
@@ -106,6 +112,11 @@ class ReportService {
     msg += `🏆 ОБЩИЙ ИТОГ ЗА СЕГОДНЯ:\n`;
     msg += `• Общий вал: ${formatter.formatCurrency(reportData.totalGross)}\n`;
     msg += `• Всего сделок: ${reportData.totalSalesCount}\n\n`;
+    msg += `🏆 Всего за месяц:\n`;
+    msg += `• Общий вал продление: ${formatter.formatCurrency(reportData.monthlyRenewalsGross)}\n`;
+    msg += `• Общий вал отмены: ${formatter.formatCurrency(reportData.monthlyCancellationsGross)}\n`;
+    msg += `• Общий вал Отмена+Продление: ${formatter.formatCurrency(reportData.monthlyTotalGross)}\n`;
+    msg += `• Всего сделок: ${reportData.monthlyTotalSalesCount}\n\n`;
     msg += `Отчет сформирован автоматически`;
 
     return msg;
@@ -123,6 +134,12 @@ class ReportService {
     let totalGross = 0;
     let totalSalesCount = 0;
     let totalDvdCount = 0;
+
+    // Monthly Stats
+    let monthlyRenewalsGross = 0;
+    let monthlyRenewalsSales = 0;
+    let monthlyCancellationsGross = 0;
+    let monthlyCancellationsSales = 0;
 
     // Categories Initialization
     const categories = {
@@ -218,10 +235,26 @@ class ReportService {
         if (!rowDateRaw) continue;
 
         const rowDateTrimmed = String(rowDateRaw).trim();
-        if (rowDateTrimmed !== dateToProcess) continue;
 
         const grossVal = helpers.parseNumber(row[9]); // J - ВАЛ (Index 9)
         if (grossVal <= 0) continue;
+
+        // Monthly accumulation
+        const parts = rowDateTrimmed.split('.');
+        const targetParts = dateToProcess.split('.');
+        const isSameMonth = parts.length === 3 && targetParts.length === 3 && parts[1] === targetParts[1] && parts[2] === targetParts[2];
+        if (isSameMonth) {
+          if (normalizedSheetName.includes('отмен')) {
+            monthlyCancellationsGross += grossVal;
+            monthlyCancellationsSales++;
+          } else {
+            monthlyRenewalsGross += grossVal;
+            monthlyRenewalsSales++;
+          }
+        }
+
+        // Daily accumulation filter
+        if (rowDateTrimmed !== dateToProcess) continue;
 
         processedRowsCount++;
         sheetHasDataForDay = true;
@@ -239,7 +272,6 @@ class ReportService {
 
         // Determine category based on sheet name and lead source
         let categoryKey = null;
-        const normalizedSheetName = sheetName.toLowerCase();
 
         if (normalizedSheetName.includes('отмен')) {
           // Rule: All rows in the 'Отмены' sheet belong to the 'Отмены' category
@@ -316,7 +348,13 @@ class ReportService {
       totalSalesCount,
       averageCheck: overallAvgCheck,
       totalDvdCount,
-      categories
+      categories,
+      monthlyRenewalsGross,
+      monthlyRenewalsSales,
+      monthlyCancellationsGross,
+      monthlyCancellationsSales,
+      monthlyTotalGross: monthlyRenewalsGross + monthlyCancellationsGross,
+      monthlyTotalSalesCount: monthlyRenewalsSales + monthlyCancellationsSales
     };
   }
 

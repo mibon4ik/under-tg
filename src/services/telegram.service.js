@@ -143,7 +143,7 @@ class TelegramService {
           keyboard: [
             [{ text: '📊 Получить актуальный отчет' }, { text: '📋 Отчеты РНП' }],
             [
-              { text: '💰 Валовая прибыль за сегодня' },
+              { text: '💰 Валовая прибыль ОП2' },
               { text: '💰 Валовая прибыль ОП1' }
             ],
             [
@@ -188,8 +188,8 @@ class TelegramService {
         return;
       }
 
-      // 3. Command: /profit or button "💰 Валовая прибыль за сегодня"
-      if (normalizedText === '/profit' || normalizedText === '💰 валовая прибыль за сегодня' || normalizedText.includes('прибыль за сегодня')) {
+      // 3. Command: /profit or button "💰 Валовая прибыль ОП2"
+      if (normalizedText === '/profit' || normalizedText === '💰 валовая прибыль оп2' || normalizedText.includes('прибыль оп2') || normalizedText.includes('прибыль за сегодня')) {
         logger.info(`User ${chatId} requested instant gross profit totals.`);
 
         // Send a temporary "loading" notice
@@ -342,7 +342,7 @@ class TelegramService {
           keyboard: [
             [{ text: '📊 Получить актуальный отчет' }, { text: '📋 Отчеты РНП' }],
             [
-              { text: '💰 Валовая прибыль за сегодня' },
+              { text: '💰 Валовая прибыль ОП2' },
               { text: '💰 Валовая прибыль ОП1' }
             ],
             [
@@ -363,7 +363,7 @@ class TelegramService {
         `Используйте кнопки меню:\n` +
         `• **📊 Получить актуальный отчет**\n` +
         `• **📋 Отчеты РНП**\n` +
-        `• **💰 Валовая прибыль за сегодня**\n` +
+        `• **💰 Валовая прибыль ОП2**\n` +
         `• **💰 Валовая прибыль ОП1**\n` +
         `• **📞 Отчет по звонкам**\n` +
         `• **📊 Отчет по amoCRM**`;
