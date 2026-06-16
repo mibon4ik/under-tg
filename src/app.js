@@ -754,10 +754,13 @@ app.post('/api/amocrm/export-leads', authMiddleware, async (req, res) => {
       let email = '';
       if (c.custom_fields_values) {
         c.custom_fields_values.forEach(field => {
-          if (field.field_code === 'PHONE') {
+          const code = String(field.field_code || '').toUpperCase();
+          const name = String(field.field_name || '').toLowerCase();
+          
+          if (code === 'PHONE' || name.includes('телефон') || name === 'phone') {
             const vals = field.values || [];
             phone = vals.map(v => v.value).join(', ');
-          } else if (field.field_code === 'EMAIL') {
+          } else if (code === 'EMAIL' || name.includes('почта') || name === 'email' || name.includes('mail')) {
             const vals = field.values || [];
             email = vals.map(v => v.value).join(', ');
           }

@@ -255,8 +255,10 @@ class AmoCrmService {
   async fetchContactsByIds(contactIds) {
     if (!contactIds || contactIds.length === 0) return [];
     
-    // De-duplicate contact IDs
-    const uniqueIds = Array.from(new Set(contactIds));
+    // De-duplicate and filter out invalid/falsy contact IDs
+    const uniqueIds = Array.from(new Set(contactIds)).filter(id => id);
+    if (uniqueIds.length === 0) return [];
+
     let contacts = [];
     const batchSize = 100;
 
@@ -265,11 +267,10 @@ class AmoCrmService {
         const batch = uniqueIds.slice(i, i + batchSize);
         logger.info(`Fetching batch of ${batch.length} contacts from amoCRM...`);
         
-        let params = {
-          limit: batchSize
-        };
-        batch.forEach((id, index) => {
-          params[`filter[id][${index}]`] = id;
+        const params = new URLSearchParams();
+        params.append('limit', String(batchSize));
+        batch.forEach(id => {
+          params.append('filter[id][]', String(id));
         });
 
         const data = await this.sendRequest('/api/v4/contacts', 'GET', params);
