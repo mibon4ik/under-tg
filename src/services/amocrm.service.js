@@ -246,6 +246,52 @@ class AmoCrmService {
       throw error;
     }
   }
+
+  /**
+   * Fetches multiple contacts by their IDs in batches.
+   * @param {Array<number|string>} contactIds
+   * @returns {Promise<Array>} List of contact objects
+   */
+  async fetchContactsByIds(contactIds) {
+    if (!contactIds || contactIds.length === 0) return [];
+    
+    // De-duplicate contact IDs
+    const uniqueIds = Array.from(new Set(contactIds));
+    let contacts = [];
+    const batchSize = 100;
+
+    try {
+      for (let i = 0; i < uniqueIds.length; i += batchSize) {
+        const batch = uniqueIds.slice(i, i + batchSize);
+        logger.info(`Fetching batch of ${batch.length} contacts from amoCRM...`);
+        
+        let params = {
+          limit: batchSize
+        };
+        batch.forEach((id, index) => {
+          params[`filter[id][${index}]`] = id;
+        });
+
+        const data = await this.sendRequest('/api/v4/contacts', 'GET', params);
+
+        if (data && data._embedded && data._embedded.contacts) {
+          contacts = contacts.concat(data._embedded.contacts);
+        }
+
+        // Slight sleep to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+
+      logger.info(`Successfully fetched ${contacts.length} contacts details.`);
+      return contacts;
+    } catch (error) {
+      if (error.message.includes('204') || error.message.includes('No Content')) {
+        return [];
+      }
+      logger.error(`Failed to fetch contacts by IDs: ${error.message}`);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AmoCrmService();

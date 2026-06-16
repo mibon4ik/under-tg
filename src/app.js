@@ -735,6 +735,41 @@ app.post('/api/amocrm/export-leads', authMiddleware, async (req, res) => {
       }
     });
 
+    // Extract contact IDs from leads to fetch their details (phones, emails, etc.) in batch
+    const contactIds = [];
+    rawLeads.forEach(lead => {
+      const contacts = lead._embedded && lead._embedded.contacts;
+      if (contacts && contacts.length > 0) {
+        const mainContact = contacts.find(c => c.is_main) || contacts[0];
+        if (mainContact && mainContact.id) {
+          contactIds.push(mainContact.id);
+        }
+      }
+    });
+
+    const contactsData = await amocrmService.fetchContactsByIds(contactIds);
+    const contactsMap = {};
+    contactsData.forEach(c => {
+      let phone = '';
+      let email = '';
+      if (c.custom_fields_values) {
+        c.custom_fields_values.forEach(field => {
+          if (field.field_code === 'PHONE') {
+            const vals = field.values || [];
+            phone = vals.map(v => v.value).join(', ');
+          } else if (field.field_code === 'EMAIL') {
+            const vals = field.values || [];
+            email = vals.map(v => v.value).join(', ');
+          }
+        });
+      }
+      contactsMap[c.id] = {
+        name: c.name || '',
+        phone,
+        email
+      };
+    });
+
     // Transform leads to flat objects for Excel
     const exportData = rawLeads.map(lead => {
       let contactName = '';
@@ -744,18 +779,15 @@ app.post('/api/amocrm/export-leads', authMiddleware, async (req, res) => {
       const contacts = lead._embedded && lead._embedded.contacts;
       if (contacts && contacts.length > 0) {
         const mainContact = contacts.find(c => c.is_main) || contacts[0];
-        contactName = mainContact.name || '';
-        
-        if (mainContact.custom_fields_values) {
-          mainContact.custom_fields_values.forEach(field => {
-            if (field.field_code === 'PHONE') {
-              const vals = field.values || [];
-              contactPhone = vals.map(v => v.value).join(', ');
-            } else if (field.field_code === 'EMAIL') {
-              const vals = field.values || [];
-              contactEmail = vals.map(v => v.value).join(', ');
-            }
-          });
+        if (mainContact && mainContact.id) {
+          const detail = contactsMap[mainContact.id];
+          if (detail) {
+            contactName = detail.name || mainContact.name || '';
+            contactPhone = detail.phone || '';
+            contactEmail = detail.email || '';
+          } else {
+            contactName = mainContact.name || '';
+          }
         }
       }
 
