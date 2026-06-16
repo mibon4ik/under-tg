@@ -657,7 +657,161 @@ app.post('/api/amocrm/deduplicate', authMiddleware, upload.single('file'), async
 });
 
 /**
- * Download deduplicated clean file
+ * Fetch all pipelines and stages from amoCRM
+ * GET /api/amocrm/pipelines
+ */
+app.get('/api/amocrm/pipelines', authMiddleware, async (req, res) => {
+  try {
+    if (!config.AMO_SUBDOMAIN || !config.AMO_INTEGRATION_TOKEN) {
+      return res.json({ 
+        success: false, 
+        error: 'credentials_missing',
+        message: 'Credentials are not configured.' 
+      });
+    }
+
+    const amocrmService = require('./services/amocrm.service');
+    const pipelines = await amocrmService.fetchPipelines();
+    
+    res.json({
+      success: true,
+      pipelines
+    });
+  } catch (err) {
+    logger.error('Error in GET /api/amocrm/pipelines:', err.message);
+    res.status(500).json({ 
+      success: false, 
+      error: 'amocrm_error', 
+      message: err.message 
+    });
+  }
+});
+
+/**
+ * Export all leads from a specific pipeline and stages to XLSX
+ * POST /api/amocrm/export-leads
+ */
+app.post('/api/amocrm/export-leads', authMiddleware, async (req, res) => {
+  const { pipelineId, statusIds } = req.body;
+  
+  if (!pipelineId) {
+    return res.status(400).json({ success: false, error: 'pipelineId is required' });
+  }
+
+  try {
+    if (!config.AMO_SUBDOMAIN || !config.AMO_INTEGRATION_TOKEN) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Учетные данные amoCRM не настроены. Пожалуйста, сохраните субдомен и токен доступа в настройках интеграции.' 
+      });
+    }
+
+    const amocrmService = require('./services/amocrm.service');
+    
+    // Fetch raw leads, users, and pipelines concurrently
+    const [rawLeads, users, pipelines] = await Promise.all([
+      amocrmService.fetchLeads(pipelineId, statusIds),
+      amocrmService.fetchUsers(),
+      amocrmService.fetchPipelines()
+    ]);
+
+    // Create maps for quick lookup
+    const userMap = {};
+    users.forEach(u => {
+      userMap[u.id] = u.name || u.email || String(u.id);
+    });
+
+    const statusMap = {};
+    const pipelineMap = {};
+    pipelines.forEach(p => {
+      pipelineMap[p.id] = p.name;
+      if (p._embedded && p._embedded.statuses) {
+        p._embedded.statuses.forEach(s => {
+          statusMap[s.id] = {
+            name: s.name,
+            pipelineName: p.name
+          };
+        });
+      }
+    });
+
+    // Transform leads to flat objects for Excel
+    const exportData = rawLeads.map(lead => {
+      let contactName = '';
+      let contactPhone = '';
+      let contactEmail = '';
+
+      const contacts = lead._embedded && lead._embedded.contacts;
+      if (contacts && contacts.length > 0) {
+        const mainContact = contacts.find(c => c.is_main) || contacts[0];
+        contactName = mainContact.name || '';
+        
+        if (mainContact.custom_fields_values) {
+          mainContact.custom_fields_values.forEach(field => {
+            if (field.field_code === 'PHONE') {
+              const vals = field.values || [];
+              contactPhone = vals.map(v => v.value).join(', ');
+            } else if (field.field_code === 'EMAIL') {
+              const vals = field.values || [];
+              contactEmail = vals.map(v => v.value).join(', ');
+            }
+          });
+        }
+      }
+
+      return {
+        'ID сделки': lead.id,
+        'Название сделки': lead.name || '',
+        'Бюджет': lead.price || 0,
+        'Воронка': pipelineMap[lead.pipeline_id] || String(lead.pipeline_id),
+        'Этап': (statusMap[lead.status_id] && statusMap[lead.status_id].name) || String(lead.status_id),
+        'Дата создания': lead.created_at ? new Date(lead.created_at * 1000).toLocaleString('ru-RU') : '',
+        'Дата закрытия': lead.closed_at ? new Date(lead.closed_at * 1000).toLocaleString('ru-RU') : '',
+        'Ответственный': userMap[lead.responsible_user_id] || String(lead.responsible_user_id),
+        'Имя контакта': contactName,
+        'Телефон': contactPhone,
+        'Email': contactEmail
+      };
+    });
+
+    // Generate XLSX using SheetJS
+    const XLSX = require('xlsx');
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    
+    // Auto-adjust column widths
+    if (exportData.length > 0) {
+      const colWidths = Object.keys(exportData[0]).map(key => {
+        const maxLength = Math.max(
+          key.length,
+          ...exportData.map(row => String(row[key] || '').length)
+        );
+        return { wch: Math.min(maxLength + 2, 50) };
+      });
+      ws['!cols'] = colWidths;
+    }
+
+    XLSX.utils.book_append_sheet(wb, ws, "Сделки");
+
+    const outputFileName = `leads_export-${Date.now()}.xlsx`;
+    const outputFilePath = path.join(uploadDir, outputFileName);
+
+    XLSX.writeFile(wb, outputFilePath);
+
+    const safePipelineName = (pipelineMap[pipelineId] || 'export').replace(/[^a-zA-Z0-9а-яА-ЯёЁ_ -]/g, '');
+    res.json({
+      success: true,
+      fileId: outputFileName,
+      fileName: `leads_${safePipelineName}_${Date.now()}.xlsx`
+    });
+  } catch (err) {
+    logger.error('Error in POST /api/amocrm/export-leads:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * Download generated file with dynamic name option
  * GET /api/amocrm/download/:fileId
  */
 app.get('/api/amocrm/download/:fileId', authMiddleware, (req, res) => {
@@ -671,7 +825,8 @@ app.get('/api/amocrm/download/:fileId', authMiddleware, (req, res) => {
     return res.status(404).json({ error: 'Файл не найден или срок его хранения истек.' });
   }
 
-  res.download(filePath, 'clean_import.xlsx', (err) => {
+  const downloadName = req.query.name || 'export.xlsx';
+  res.download(filePath, downloadName, (err) => {
     try { fs.unlinkSync(filePath); } catch (e) {}
   });
 });

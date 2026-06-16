@@ -170,6 +170,82 @@ class AmoCrmService {
       throw error;
     }
   }
+
+  /**
+   * Fetches all pipelines with their statuses from amoCRM.
+   * @returns {Promise<Array>} List of pipelines
+   */
+  async fetchPipelines() {
+    try {
+      const data = await this.sendRequest('/api/v4/leads/pipelines');
+      if (data && data._embedded && data._embedded.pipelines) {
+        return data._embedded.pipelines;
+      }
+      return [];
+    } catch (error) {
+      logger.error(`Failed to fetch amoCRM pipelines: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Fetches all leads for a specific pipeline and status IDs with auto-pagination.
+   * @param {number|string} pipelineId
+   * @param {Array<number|string>} statusIds
+   * @returns {Promise<Array>} List of lead objects
+   */
+  async fetchLeads(pipelineId, statusIds = []) {
+    let leads = [];
+    let page = 1;
+    let hasNext = true;
+    const limit = 250;
+
+    try {
+      while (hasNext) {
+        logger.info(`Fetching amoCRM leads page ${page} for pipeline ${pipelineId}...`);
+        
+        let params = {
+          limit,
+          page,
+          with: 'contacts'
+        };
+
+        if (statusIds && statusIds.length > 0) {
+          statusIds.forEach((statusId, index) => {
+            params[`filter[statuses][${index}][pipeline_id]`] = pipelineId;
+            params[`filter[statuses][${index}][status_id]`] = statusId;
+          });
+        } else {
+          params['filter[pipeline_id]'] = pipelineId;
+        }
+
+        const data = await this.sendRequest('/api/v4/leads', 'GET', params);
+
+        if (data && data._embedded && data._embedded.leads && data._embedded.leads.length > 0) {
+          leads = leads.concat(data._embedded.leads);
+          if (data._links && data._links.next) {
+            page++;
+          } else {
+            hasNext = false;
+          }
+        } else {
+          hasNext = false;
+        }
+        
+        // Sleep a bit to avoid hitting rate limit (7 requests per second)
+        await new Promise(resolve => setTimeout(resolve, 150));
+      }
+      logger.info(`Successfully fetched ${leads.length} leads.`);
+      return leads;
+    } catch (error) {
+      if (error.message.includes('204') || error.message.includes('No Content')) {
+        logger.info('No leads found for specified filters.');
+        return [];
+      }
+      logger.error(`Failed to fetch amoCRM leads: ${error.message}`);
+      throw error;
+    }
+  }
 }
 
 module.exports = new AmoCrmService();

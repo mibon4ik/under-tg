@@ -157,6 +157,9 @@ document.addEventListener('DOMContentLoaded', () => {
           
           // Auto-fetch amoCRM managers on load
           fetchAndRenderAmoManagers(false);
+          
+          // Auto-fetch amoCRM pipelines on load
+          fetchAndRenderPipelines(false);
         }
       } else {
         localStorage.removeItem('dashboard_token');
@@ -832,6 +835,7 @@ document.addEventListener('DOMContentLoaded', () => {
         showToast('Успешно', 'Авторизационные данные amoCRM сохранены!', 'success');
         activeSettings = payload;
         await fetchAndRenderAmoManagers(true);
+        await fetchAndRenderPipelines(false);
       } else {
         throw new Error(data.error || 'Неизвестная ошибка сервера');
       }
@@ -919,161 +923,205 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchAndRenderAmoManagers(true);
   });
 
-  // --- amoCRM Deduplication & Filtering ---
-  const dropZone = document.getElementById('dropZone');
-  const dedupFileInput = document.getElementById('dedupFile');
-  const uploadText = document.getElementById('uploadText');
-  const btnRunDedup = document.getElementById('btnRunDedup');
-  const btnClearFile = document.getElementById('btnClearFile');
-  const dedupPhoneColumnInput = document.getElementById('dedupPhoneColumn');
-  
-  const dedupResults = document.getElementById('dedupResults');
-  const statTotalRows = document.getElementById('statTotalRows');
-  const statCrmContacts = document.getElementById('statCrmContacts');
-  const statCrmDupes = document.getElementById('statCrmDupes');
-  const statFileDupes = document.getElementById('statFileDupes');
-  const statInvalidFormat = document.getElementById('statInvalidFormat');
-  const statCleanLeads = document.getElementById('statCleanLeads');
-  
-  const btnDownloadClean = document.getElementById('btnDownloadClean');
-  const btnDownloadLog = document.getElementById('btnDownloadLog');
+  // --- amoCRM Export Leads ---
+  const selectPipeline = document.getElementById('exportPipelineSelect');
+  const stagesList = document.getElementById('exportStagesList');
+  const stagesContainer = document.getElementById('exportStagesContainer');
+  const btnRunExport = document.getElementById('btnRunExport');
+  const btnRefreshPipelines = document.getElementById('btnRefreshPipelines');
+  const btnSelectAllStages = document.getElementById('btnSelectAllStages');
 
-  let selectedFile = null;
-  let cleanFileId = null;
-  let errorLogId = null;
+  let pipelinesData = [];
 
-  // Clicking on drop zone triggers file input
-  if (dropZone) {
-    dropZone.addEventListener('click', () => {
-      dedupFileInput.click();
-    });
+  // Fetch pipelines and stages list
+  async function fetchAndRenderPipelines(showNotice = false) {
+    const subdomain = amoSubdomainInput.value.trim();
+    const token = amoIntegrationTokenInput.value.trim();
 
-    // Handle file selection
-    dedupFileInput.addEventListener('change', (e) => {
-      if (e.target.files.length > 0) {
-        handleFileSelected(e.target.files[0]);
+    if (!subdomain || !token) {
+      if (selectPipeline) {
+        selectPipeline.innerHTML = '<option value="">🔒 Сначала настройте и сохраните ключи amoCRM</option>';
       }
-    });
-
-    // Drag & Drop handlers
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      dropZone.classList.add('dragover');
-    });
-
-    dropZone.addEventListener('dragleave', () => {
-      dropZone.classList.remove('dragover');
-    });
-
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropZone.classList.remove('dragover');
-      if (e.dataTransfer.files.length > 0) {
-        handleFileSelected(e.dataTransfer.files[0]);
-      }
-    });
-  }
-
-  function handleFileSelected(file) {
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
-      showToast('Ошибка файла', 'Допускаются только файлы Excel (.xlsx, .xls) или CSV (.csv).', 'error');
+      if (btnRunExport) btnRunExport.disabled = true;
       return;
     }
 
-    selectedFile = file;
-    uploadText.textContent = `Выбран файл: ${file.name} (${(file.size / 1024).toFixed(1)} КБ)`;
-    btnRunDedup.disabled = false;
-    btnClearFile.classList.remove('hidden');
-    
-    // Hide previous results on new selection
-    dedupResults.classList.add('hidden');
-    cleanFileId = null;
-    errorLogId = null;
+    if (selectPipeline) {
+      selectPipeline.innerHTML = '<option value="">Загрузка воронок...</option>';
+    }
+    if (btnRunExport) btnRunExport.disabled = true;
+
+    if (showNotice) {
+      showToast('amoCRM', 'Загрузка списка воронок...', 'info');
+    }
+
+    try {
+      const response = await fetch(getEndpoint('/api/amocrm/pipelines'), {
+        headers: { 'Authorization': activeToken }
+      });
+      
+      const data = await response.json();
+
+      if (data && data.success) {
+        pipelinesData = data.pipelines || [];
+        selectPipeline.innerHTML = '<option value="">-- Выберите воронку --</option>';
+        
+        pipelinesData.forEach(pipe => {
+          const opt = document.createElement('option');
+          opt.value = pipe.id;
+          opt.textContent = pipe.name + (pipe.is_main ? ' (Основная)' : '');
+          selectPipeline.appendChild(opt);
+        });
+
+        if (showNotice) {
+          showToast('Готово!', `Загружено ${pipelinesData.length} воронок из amoCRM.`, 'success');
+        }
+      } else {
+        selectPipeline.innerHTML = '<option value="">Ошибка загрузки воронок</option>';
+        if (showNotice) {
+          showToast('Ошибка API', data.message || 'Не удалось загрузить воронки.', 'error');
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      if (selectPipeline) {
+        selectPipeline.innerHTML = '<option value="">Ошибка подключения</option>';
+      }
+      if (showNotice) {
+        showToast('Ошибка сети', 'Не удалось связаться с сервером.', 'error');
+      }
+    }
   }
 
-  if (btnClearFile) {
-    btnClearFile.addEventListener('click', () => {
-      resetDedupForm();
+  // Handle pipeline dropdown change
+  if (selectPipeline) {
+    selectPipeline.addEventListener('change', () => {
+      const pipelineId = selectPipeline.value;
+      if (!pipelineId) {
+        stagesContainer.classList.add('hidden');
+        stagesList.innerHTML = '';
+        btnRunExport.disabled = true;
+        return;
+      }
+
+      const pipeline = pipelinesData.find(p => String(p.id) === String(pipelineId));
+      if (!pipeline || !pipeline._embedded || !pipeline._embedded.statuses) {
+        stagesContainer.classList.add('hidden');
+        stagesList.innerHTML = '';
+        btnRunExport.disabled = true;
+        return;
+      }
+
+      // Render statuses checkboxes
+      stagesList.innerHTML = '';
+      const statuses = pipeline._embedded.statuses;
+      // Sort statuses by sort order
+      statuses.sort((a, b) => (a.sort || 0) - (b.sort || 0));
+
+      statuses.forEach(status => {
+        const div = document.createElement('div');
+        div.className = 'stage-checkbox-item';
+        div.innerHTML = `
+          <input type="checkbox" id="stage_cb_${status.id}" class="stage-cb" value="${status.id}">
+          <label for="stage_cb_${status.id}" style="cursor: pointer; display: flex; align-items: center; gap: 0.35rem; width: 100%;">
+            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background-color:${status.color || '#ccc'};"></span>
+            ${status.name}
+          </label>
+        `;
+        stagesList.appendChild(div);
+      });
+
+      stagesContainer.classList.remove('hidden');
+      btnRunExport.disabled = false;
+      
+      // Auto-check all stages by default
+      selectAllStages(true);
     });
   }
 
-  function resetDedupForm() {
-    selectedFile = null;
-    dedupFileInput.value = '';
-    uploadText.textContent = 'Перетащите файл сюда или кликните для выбора';
-    btnRunDedup.disabled = true;
-    btnClearFile.classList.add('hidden');
-    dedupResults.classList.add('hidden');
-    cleanFileId = null;
-    errorLogId = null;
+  function selectAllStages(checked = true) {
+    const checkboxes = stagesList.querySelectorAll('.stage-cb');
+    checkboxes.forEach(cb => {
+      cb.checked = checked;
+    });
+    if (btnSelectAllStages) {
+      btnSelectAllStages.textContent = checked ? 'Сбросить выбор' : 'Выбрать все';
+    }
   }
 
-  // Running the Deduplication process
-  if (btnRunDedup) {
-    btnRunDedup.addEventListener('click', async () => {
-      if (!selectedFile) return;
+  // Toggle select all stages button
+  if (btnSelectAllStages) {
+    btnSelectAllStages.addEventListener('click', () => {
+      const checkboxes = stagesList.querySelectorAll('.stage-cb');
+      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+      selectAllStages(!allChecked);
+    });
+  }
 
-      setLoadingState(btnRunDedup, true);
-      showToast('Дедупликация', 'Начался процесс выгрузки из amoCRM и дедупликации...', 'info');
+  // Handle stage checkboxes change
+  if (stagesList) {
+    stagesList.addEventListener('change', (e) => {
+      if (e.target.classList.contains('stage-cb')) {
+        const checkboxes = stagesList.querySelectorAll('.stage-cb');
+        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        if (btnSelectAllStages) {
+          btnSelectAllStages.textContent = allChecked ? 'Сбросить выбор' : 'Выбрать все';
+        }
+      }
+    });
+  }
 
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      formData.append('phoneColumn', dedupPhoneColumnInput.value.trim());
+  // Run Export Action
+  if (btnRunExport) {
+    btnRunExport.addEventListener('click', async () => {
+      const pipelineId = selectPipeline.value;
+      if (!pipelineId) return;
+
+      const checkedCheckboxes = stagesList.querySelectorAll('.stage-cb:checked');
+      const selectedStatusIds = Array.from(checkedCheckboxes).map(cb => cb.value);
+
+      if (selectedStatusIds.length === 0) {
+        showToast('Внимание', 'Выберите хотя бы один этап для выгрузки сделок.', 'error');
+        return;
+      }
+
+      setLoadingState(btnRunExport, true);
+      showToast('Выгрузка', 'Начался процесс получения сделок из amoCRM...', 'info');
 
       try {
-        const response = await fetch(getEndpoint('/api/amocrm/deduplicate'), {
+        const response = await fetch(getEndpoint('/api/amocrm/export-leads'), {
           method: 'POST',
           headers: {
-            'Authorization': activeToken
+            'Authorization': activeToken,
+            'Content-Type': 'application/json'
           },
-          body: formData
+          body: JSON.stringify({
+            pipelineId: pipelineId,
+            statusIds: selectedStatusIds
+          })
         });
 
         const data = await response.json();
 
         if (response.ok && data.success) {
-          showToast('Успех!', 'Файл успешно очищен от дубликатов!', 'success');
-          
-          // Populate stats
-          statTotalRows.textContent = data.stats.total_rows;
-          statCrmContacts.textContent = data.stats.crm_contacts_count;
-          statCrmDupes.textContent = data.stats.crm_duplicates;
-          statFileDupes.textContent = data.stats.file_duplicates;
-          statInvalidFormat.textContent = data.stats.invalid_format;
-          statCleanLeads.textContent = data.stats.clean_leads;
-          
-          cleanFileId = data.cleanFileId;
-          errorLogId = data.errorLogId;
-
-          // Show results
-          dedupResults.classList.remove('hidden');
+          showToast('Успешно!', 'Сделки выгружены. Начинаем скачивание...', 'success');
+          const downloadUrl = getEndpoint(`/api/amocrm/download/${data.fileId}?name=${encodeURIComponent(data.fileName)}`);
+          downloadProtectedFile(downloadUrl, data.fileName);
         } else {
-          throw new Error(data.error || 'Произошла ошибка при обработке.');
+          throw new Error(data.error || 'Ошибка при экспорте сделок из amoCRM.');
         }
       } catch (err) {
-        showToast('Ошибка дедупликации', err.message, 'error');
+        showToast('Ошибка выгрузки', err.message, 'error');
       } finally {
-        setLoadingState(btnRunDedup, false);
+        setLoadingState(btnRunExport, false);
       }
     });
   }
 
-  // Download cleaned file action
-  if (btnDownloadClean) {
-    btnDownloadClean.addEventListener('click', () => {
-      if (!cleanFileId) return;
-      const url = getEndpoint(`/api/amocrm/download/${cleanFileId}`);
-      downloadProtectedFile(url, 'clean_import.xlsx');
-    });
-  }
-
-  // View/Download error log action
-  if (btnDownloadLog) {
-    btnDownloadLog.addEventListener('click', () => {
-      if (!errorLogId) return;
-      const url = getEndpoint(`/api/amocrm/log/${errorLogId}`);
-      downloadProtectedFile(url, 'dedup_errors.log');
+  // Refresh pipelines button action
+  if (btnRefreshPipelines) {
+    btnRefreshPipelines.addEventListener('click', () => {
+      fetchAndRenderPipelines(true);
     });
   }
 

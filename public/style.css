@@ -771,3 +771,56 @@ input:checked + .slider:before {
 .dedup-results-section {
   animation: slide-down 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Stage Selection Checkboxes Grid */
+.stages-checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 1rem;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  max-height: 250px;
+  overflow-y: auto;
+}
+
+.stage-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 6px;
+  transition: background var(--transition-speed);
+  user-select: none;
+}
+
+.stage-checkbox-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.stage-checkbox-item input[type="checkbox"] {
+  cursor: pointer;
+  accent-color: var(--primary-color, #8a5cf6);
+  width: 16px;
+  height: 16px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--secondary-color, #3b82f6);
+  cursor: pointer;
+  font-size: 0.9rem;
+  padding: 0;
+  font-family: inherit;
+  transition: color var(--transition-speed);
+}
+
+.btn-link:hover {
+  color: var(--secondary-hover, #2563eb);
+  text-decoration: underline;
+}
