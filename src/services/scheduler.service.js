@@ -19,7 +19,9 @@ class SchedulerService {
     const timezone = config.TIMEZONE;
 
     // 1. Schedule daily sales report
-    const salesCronExpression = '0 21 * * *'; // Every day at 21:00 (9:00 PM)
+    const salesTime = config.SALES_REPORT_TIME || '21:00';
+    const [salesHours, salesMinutes] = salesTime.split(':').map(Number);
+    const salesCronExpression = `${isNaN(salesMinutes) ? 0 : salesMinutes} ${isNaN(salesHours) ? 21 : salesHours} * * *`;
     logger.info(`Initializing sales report scheduler. Cron expression: "${salesCronExpression}" in timezone "${timezone}".`);
 
     try {

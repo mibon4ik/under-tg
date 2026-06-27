@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const appsScriptUrlInput = document.getElementById('appsScriptUrl');
   const appsScriptUrlOp1Input = document.getElementById('appsScriptUrlOp1');
   const timezoneInput = document.getElementById('timezone');
+  const salesReportTimeInput = document.getElementById('salesReportTime');
   const dashboardPasswordInput = document.getElementById('dashboardPassword');
   
   // Dynamic Sheet Dropdowns
@@ -221,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
     appsScriptUrlInput.value = settings.APPS_SCRIPT_URL || '';
     appsScriptUrlOp1Input.value = settings.APPS_SCRIPT_URL_OP1 || '';
     timezoneInput.value = settings.TIMEZONE || 'Asia/Almaty';
+    salesReportTimeInput.value = settings.SALES_REPORT_TIME || '21:00';
     dashboardPasswordInput.value = settings.DASHBOARD_PASSWORD || 'admin';
     
     // Binotel Fields
@@ -376,6 +378,7 @@ document.addEventListener('DOMContentLoaded', () => {
       APPS_SCRIPT_URL: appsScriptUrlInput.value.trim(),
       APPS_SCRIPT_URL_OP1: appsScriptUrlOp1Input.value.trim(),
       TIMEZONE: timezoneInput.value.trim(),
+      SALES_REPORT_TIME: salesReportTimeInput.value.trim(),
       DASHBOARD_PASSWORD: dashboardPasswordInput.value.trim(),
       SHEET_PROD: selectSheetProd.value || (activeSettings ? activeSettings.SHEET_PROD : ''),
       SHEET_OTMEN: selectSheetOtmen.value || (activeSettings ? activeSettings.SHEET_OTMEN : ''),

@@ -46,6 +46,7 @@ let currentConfig = {
   AMO_ACTIVE_MANAGERS: process.env.AMO_ACTIVE_MANAGERS || '',
   AMO_REPORT_TIME: process.env.AMO_REPORT_TIME || '20:00',
   AMO_REPORT_ENABLED: process.env.AMO_REPORT_ENABLED || 'true',
+  SALES_REPORT_TIME: process.env.SALES_REPORT_TIME || '21:00',
 };
 
 // PostgreSQL Connection Pool Setup
@@ -112,6 +113,7 @@ async function initDb() {
       if (dbSettings.AMO_ACTIVE_MANAGERS) currentConfig.AMO_ACTIVE_MANAGERS = dbSettings.AMO_ACTIVE_MANAGERS;
       if (dbSettings.AMO_REPORT_TIME) currentConfig.AMO_REPORT_TIME = dbSettings.AMO_REPORT_TIME;
       if (dbSettings.AMO_REPORT_ENABLED) currentConfig.AMO_REPORT_ENABLED = dbSettings.AMO_REPORT_ENABLED;
+      if (dbSettings.SALES_REPORT_TIME) currentConfig.SALES_REPORT_TIME = dbSettings.SALES_REPORT_TIME;
 
     } catch (err) {
       console.error('[DB] Failed to initialize PostgreSQL settings:', err.message);
@@ -153,6 +155,7 @@ function loadLocalSettings() {
       if (saved.AMO_ACTIVE_MANAGERS) currentConfig.AMO_ACTIVE_MANAGERS = saved.AMO_ACTIVE_MANAGERS;
       if (saved.AMO_REPORT_TIME) currentConfig.AMO_REPORT_TIME = saved.AMO_REPORT_TIME;
       if (saved.AMO_REPORT_ENABLED) currentConfig.AMO_REPORT_ENABLED = saved.AMO_REPORT_ENABLED;
+      if (saved.SALES_REPORT_TIME) currentConfig.SALES_REPORT_TIME = saved.SALES_REPORT_TIME;
       console.log('[Local] Loaded settings from settings.json.');
     }
   } catch (err) {
@@ -193,6 +196,7 @@ module.exports = {
   get AMO_ACTIVE_MANAGERS() { return currentConfig.AMO_ACTIVE_MANAGERS; },
   get AMO_REPORT_TIME() { return currentConfig.AMO_REPORT_TIME; },
   get AMO_REPORT_ENABLED() { return currentConfig.AMO_REPORT_ENABLED; },
+  get SALES_REPORT_TIME() { return currentConfig.SALES_REPORT_TIME; },
 
   // Saves settings dynamically to PostgreSQL and local fallback settings.json
   async saveSettings(newSettings) {
@@ -221,6 +225,7 @@ module.exports = {
       if (newSettings.AMO_ACTIVE_MANAGERS !== undefined) currentConfig.AMO_ACTIVE_MANAGERS = newSettings.AMO_ACTIVE_MANAGERS;
       if (newSettings.AMO_REPORT_TIME !== undefined) currentConfig.AMO_REPORT_TIME = newSettings.AMO_REPORT_TIME;
       if (newSettings.AMO_REPORT_ENABLED !== undefined) currentConfig.AMO_REPORT_ENABLED = newSettings.AMO_REPORT_ENABLED;
+      if (newSettings.SALES_REPORT_TIME !== undefined) currentConfig.SALES_REPORT_TIME = newSettings.SALES_REPORT_TIME;
 
       // 2. Persist to PostgreSQL if connection is active
       if (dbPool) {
@@ -230,7 +235,8 @@ module.exports = {
           'APPS_SCRIPT_URL', 'APPS_SCRIPT_URL_OP1', 'DASHBOARD_PASSWORD',
           'SHEET_PROD', 'SHEET_OTMEN', 'SHEET_OP1', 'SHEET_RNP',
           'BINOTEL_API_KEY', 'BINOTEL_API_SECRET', 'BINOTEL_COMPANY_ID', 'BINOTEL_ACTIVE_MANAGERS',
-          'AMO_SUBDOMAIN', 'AMO_INTEGRATION_TOKEN', 'AMO_ACTIVE_MANAGERS', 'AMO_REPORT_TIME', 'AMO_REPORT_ENABLED'
+          'AMO_SUBDOMAIN', 'AMO_INTEGRATION_TOKEN', 'AMO_ACTIVE_MANAGERS', 'AMO_REPORT_TIME', 'AMO_REPORT_ENABLED',
+          'SALES_REPORT_TIME'
         ];
         
         for (const k of keys) {
@@ -246,6 +252,7 @@ module.exports = {
           else if (k === 'AMO_ACTIVE_MANAGERS') val = newSettings.AMO_ACTIVE_MANAGERS !== undefined ? newSettings.AMO_ACTIVE_MANAGERS : currentConfig.AMO_ACTIVE_MANAGERS;
           else if (k === 'AMO_REPORT_TIME') val = newSettings.AMO_REPORT_TIME !== undefined ? newSettings.AMO_REPORT_TIME : currentConfig.AMO_REPORT_TIME;
           else if (k === 'AMO_REPORT_ENABLED') val = newSettings.AMO_REPORT_ENABLED !== undefined ? newSettings.AMO_REPORT_ENABLED : currentConfig.AMO_REPORT_ENABLED;
+          else if (k === 'SALES_REPORT_TIME') val = newSettings.SALES_REPORT_TIME !== undefined ? newSettings.SALES_REPORT_TIME : currentConfig.SALES_REPORT_TIME;
           else val = newSettings[k] !== undefined ? newSettings[k] : currentConfig[k] || '';
           
           await dbPool.query(`
@@ -278,7 +285,8 @@ module.exports = {
         AMO_INTEGRATION_TOKEN: currentConfig.AMO_INTEGRATION_TOKEN,
         AMO_ACTIVE_MANAGERS: currentConfig.AMO_ACTIVE_MANAGERS,
         AMO_REPORT_TIME: currentConfig.AMO_REPORT_TIME,
-        AMO_REPORT_ENABLED: currentConfig.AMO_REPORT_ENABLED
+        AMO_REPORT_ENABLED: currentConfig.AMO_REPORT_ENABLED,
+        SALES_REPORT_TIME: currentConfig.SALES_REPORT_TIME
       };
       
       fs.writeFileSync(settingsFilePath, JSON.stringify(settingsToBackup, null, 2), 'utf8');
@@ -311,7 +319,8 @@ module.exports = {
       AMO_INTEGRATION_TOKEN: currentConfig.AMO_INTEGRATION_TOKEN,
       AMO_ACTIVE_MANAGERS: currentConfig.AMO_ACTIVE_MANAGERS,
       AMO_REPORT_TIME: currentConfig.AMO_REPORT_TIME,
-      AMO_REPORT_ENABLED: currentConfig.AMO_REPORT_ENABLED
+      AMO_REPORT_ENABLED: currentConfig.AMO_REPORT_ENABLED,
+      SALES_REPORT_TIME: currentConfig.SALES_REPORT_TIME
     };
   },
   
