@@ -63,6 +63,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnSaveAmoManagers = document.getElementById('btnSaveAmoManagers');
   const btnSyncAmoManagers = document.getElementById('btnSyncAmoManagers');
   
+  // Manual Report Elements
+  const manualReportType = document.getElementById('manualReportType');
+  const manualReportDate = document.getElementById('manualReportDate');
+  const btnSendManualReport = document.getElementById('btnSendManualReport');
+  const manualReportPreviewBlock = document.getElementById('manualReportPreviewBlock');
+  const manualReportPreviewDate = document.getElementById('manualReportPreviewDate');
+  const manualReportPreviewText = document.getElementById('manualReportPreviewText');
+  
   const toastContainer = document.getElementById('toastContainer');
   const indicatorDot = document.querySelector('.indicator-dot');
 
@@ -1152,6 +1160,67 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       showToast('Ошибка', `Не удалось скачать файл: ${err.message}`, 'error');
     }
+  }
+
+  // Set default date to today for manual report
+  if (manualReportDate) {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    manualReportDate.value = `${year}-${month}-${day}`;
+  }
+
+  // Handle manual report trigger
+  if (btnSendManualReport) {
+    btnSendManualReport.addEventListener('click', async () => {
+      const reportType = manualReportType.value; // 'sheets' or 'amocrm'
+      const rawDate = manualReportDate.value; // 'YYYY-MM-DD'
+      
+      let formattedDate = null;
+      if (rawDate) {
+        const [year, month, day] = rawDate.split('-');
+        formattedDate = `${day}.${month}.${year}`; // convert to 'dd.MM.yyyy'
+      }
+
+      setLoadingState(btnSendManualReport, true);
+      showToast('Отправка отчета', `Запуск генерации отчета за ${formattedDate || 'сегодня'}...`, 'info');
+
+      const endpoint = reportType === 'amocrm' ? '/send-amocrm-report' : '/send-report';
+
+      try {
+        const response = await fetch(getEndpoint(endpoint), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': activeToken
+          },
+          body: JSON.stringify({ date: formattedDate })
+        });
+
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          showToast('Успешно!', `Отчет за ${formattedDate || 'сегодня'} успешно отправлен в Telegram!`, 'success');
+          
+          if (data.reportPreview) {
+            manualReportPreviewText.textContent = data.reportPreview;
+            if (manualReportPreviewDate) {
+              manualReportPreviewDate.textContent = formattedDate || 'сегодня';
+            }
+            manualReportPreviewBlock.classList.remove('hidden');
+          } else {
+            manualReportPreviewBlock.classList.add('hidden');
+          }
+        } else {
+          throw new Error(data.error || data.message || 'Неизвестная ошибка на сервере');
+        }
+      } catch (err) {
+        showToast('Ошибка отправки', err.message, 'error');
+      } finally {
+        setLoadingState(btnSendManualReport, false);
+      }
+    });
   }
 
   // Trigger Auth check immediately
