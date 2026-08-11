@@ -134,17 +134,20 @@ async function authenticateUser(username, password) {
       }
       return false;
     } catch (err) {
-      console.error('[Auth] Error authenticating user:', err.message);
-      return false;
+      console.error('[Auth] Error authenticating user, falling back to local auth:', err.message);
+      return authenticateLocalUser(username, enteredHash);
     }
   } else {
-    // Local fallback
-    const user = localUsers[username];
-    if (user) {
-      return user.password_hash === enteredHash;
-    }
-    return false;
+    return authenticateLocalUser(username, enteredHash);
   }
+}
+
+function authenticateLocalUser(username, enteredHash) {
+  const user = localUsers[username];
+  if (user) {
+    return user.password_hash === enteredHash;
+  }
+  return false;
 }
 
 /**

@@ -6,6 +6,95 @@ const logger = require('../utils/logger');
  * Service to handle sending notifications and listening to interactive commands via Telegram Bot API.
  */
 class TelegramService {
+  constructor() {
+    this.userStates = new Map(); // Stores user session states: chatId -> { mode: 'REPORT' | 'PROFIT_OP2' | 'PROFIT_OP1' }
+  }
+
+  /**
+   * Generates a Reply Keyboard containing buttons for all days of the current month.
+   * @returns {Object} Telegram reply_markup object.
+   */
+  buildMonthDaysKeyboard() {
+    const formatter = require('../utils/formatter');
+    const now = new Date();
+    const currentDateStr = formatter.formatDate(now); // e.g. "11.08.2026"
+    const [currDay, currMonth, currYear] = currentDateStr.split('.');
+    
+    const daysInMonth = new Date(parseInt(currYear, 10), parseInt(currMonth, 10), 0).getDate();
+    
+    const keyboard = [
+      [{ text: `⚡ За сегодня (${currentDateStr})` }]
+    ];
+    
+    let row = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      row.push({ text: `${d} число` });
+      if (row.length === 5) {
+        keyboard.push(row);
+        row = [];
+      }
+    }
+    if (row.length > 0) {
+      keyboard.push(row);
+    }
+    
+    keyboard.push([{ text: '⬅️ Назад в меню' }]);
+    
+    return {
+      keyboard,
+      resize_keyboard: true,
+      one_time_keyboard: false
+    };
+  }
+
+  /**
+   * Tries to parse a target date from user input text (e.g. "5 число", "5", "05.08.2026").
+   * @param {string} text 
+   * @returns {string|null} Formatted date "dd.MM.yyyy" or null.
+   */
+  parseTargetDate(text) {
+    const formatter = require('../utils/formatter');
+    const now = new Date();
+    const currentDateStr = formatter.formatDate(now);
+    const [, currMonth, currYear] = currentDateStr.split('.');
+
+    const normalized = text.trim().toLowerCase();
+
+    // 1. "⚡ За сегодня (11.08.2026)" or "за сегодня" or "сегодня"
+    if (normalized.includes('за сегодня') || normalized === 'сегодня') {
+      return currentDateStr;
+    }
+
+    // 2. Full date format "dd.mm.yyyy" (e.g. "05.08.2026")
+    const fullDateMatch = normalized.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+    if (fullDateMatch) {
+      const d = String(fullDateMatch[1]).padStart(2, '0');
+      const m = String(fullDateMatch[2]).padStart(2, '0');
+      const y = fullDateMatch[3];
+      return `${d}.${m}.${y}`;
+    }
+
+    // 3. Short date format "dd.mm" (e.g. "05.08")
+    const shortDateMatch = normalized.match(/^(\d{1,2})\.(\d{1,2})$/);
+    if (shortDateMatch) {
+      const d = String(shortDateMatch[1]).padStart(2, '0');
+      const m = String(shortDateMatch[2]).padStart(2, '0');
+      return `${d}.${m}.${currYear}`;
+    }
+
+    // 4. Day number format "5 число", "5", "05"
+    const dayMatch = normalized.match(/^(\d{1,2})\s*(число|числа|день)?$/i);
+    if (dayMatch) {
+      const dayNum = parseInt(dayMatch[1], 10);
+      if (dayNum >= 1 && dayNum <= 31) {
+        const d = String(dayNum).padStart(2, '0');
+        return `${d}.${currMonth}.${currYear}`;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Sends a text message to all globally configured chat IDs.
    * Runs in parallel/sequence and continues even if one chat ID fails.
@@ -131,12 +220,13 @@ class TelegramService {
     const normalizedText = text.toLowerCase();
     
     try {
-      // 1. Command: /start
-      if (normalizedText === '/start') {
+      // 1. Command: /start or Return to Main Menu
+      if (normalizedText === '/start' || normalizedText === '⬅️ назад в меню' || normalizedText === 'назад в меню') {
+        this.userStates.delete(chatId);
         const welcomeText = 
           `👋 Привет! Я бот автоматических отчетов продаж.\n\n` +
           `Я настроен присылать ежедневный отчет в 21:00.\n` +
-          `Но вы можете запросить показатели на данный момент в любое время с помощью кнопок меню! 👇`;
+          `Но вы можете запросить показатели за любой день текущего месяца с помощью кнопок меню! 👇`;
         
         // Define a native Reply Keyboard with six buttons
         const replyMarkup = {
@@ -160,90 +250,47 @@ class TelegramService {
         return;
       }
 
-      // 2. Command: /report or button "📊 Получить актуальный отчет"
-      if (normalizedText === '/report' || normalizedText === '📊 получить актуальный отчет' || normalizedText.includes('получить отчет')) {
-        logger.info(`User ${chatId} requested an instant report.`);
-        
-        // Send a temporary "loading" notice
-        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблицам и формирую актуальный отчет...');
-        
-        try {
-          // Dynamic import to avoid CommonJS circular dependencies
-          const reportService = require('./report.service');
-          
-          // Generate report text string directly
-          const reportText = await reportService.getReportText();
-          
-          // Send report text directly back to the requesting user/chat ID
-          await this.sendMessage(chatId, reportText);
-          logger.info(`Direct sales report successfully sent to chat ID: ${chatId}`);
-        } catch (innerError) {
-          logger.error(`Failed to generate direct report response: ${innerError.message}`);
-          await this.sendMessage(
-            chatId, 
-            `⚠️ Ошибка при формировании отчета:\n${innerError.message}\n\n` +
-            `Пожалуйста, убедитесь, что Google Apps Script Web App опубликован и доступен по адресу APPS_SCRIPT_URL.`
-          );
-        }
+      // 2. Command: /report or button "📊 Получить актуальный отчет" -> Opens Date Submenu
+      if (normalizedText === '📊 получить актуальный отчет' || normalizedText === '/report' || normalizedText === 'получить отчет') {
+        this.userStates.set(chatId, { mode: 'REPORT' });
+        logger.info(`User ${chatId} opened date menu for Sales Report.`);
+        const dateMarkup = this.buildMonthDaysKeyboard();
+        const msgText = 
+          `📊 *Отчет продаж — Выбор даты*\n\n` +
+          `Выберите интересующий день текущего месяца с помощью кнопок ниже или нажмите «⚡ За сегодня»:`;
+        await this.sendMessage(chatId, msgText, dateMarkup, 'Markdown');
         return;
       }
 
-      // 3. Command: /profit or button "💰 Валовая прибыль ОП2"
-      if (normalizedText === '/profit' || normalizedText === '💰 валовая прибыль оп2' || normalizedText.includes('прибыль оп2') || normalizedText.includes('прибыль за сегодня')) {
-        logger.info(`User ${chatId} requested instant gross profit totals.`);
-
-        // Send a temporary "loading" notice
-        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблицам и рассчитываю прибыль...');
-
-        try {
-          // Dynamic import to avoid CommonJS circular dependencies
-          const reportService = require('./report.service');
-          
-          // Generate profit summary text string directly
-          const profitText = await reportService.getGrossProfitText();
-          
-          // Send profit summary directly back to the requesting user
-          await this.sendMessage(chatId, profitText);
-          logger.info(`Gross profit response successfully sent to chat ID: ${chatId}`);
-        } catch (innerError) {
-          logger.error(`Failed to generate profit response: ${innerError.message}`);
-          await this.sendMessage(
-            chatId, 
-            `⚠️ Ошибка при расчете прибыли:\n${innerError.message}\n\n` +
-            `Пожалуйста, убедитесь, что Google Apps Script Web App опубликован и доступен по адресу APPS_SCRIPT_URL.`
-          );
-        }
+      // 3. Command: /profit or button "💰 Валовая прибыль ОП2" -> Opens Date Submenu
+      if (normalizedText === '💰 валовая прибыль оп2' || normalizedText === '/profit' || normalizedText === 'прибыль оп2') {
+        this.userStates.set(chatId, { mode: 'PROFIT_OP2' });
+        logger.info(`User ${chatId} opened date menu for Gross Profit OP2.`);
+        const dateMarkup = this.buildMonthDaysKeyboard();
+        const msgText = 
+          `💰 *Валовая прибыль ОП2 — Выбор даты*\n\n` +
+          `Выберите интересующий день текущего месяца с помощью кнопок ниже или нажмите «⚡ За сегодня»:`;
+        await this.sendMessage(chatId, msgText, dateMarkup, 'Markdown');
         return;
       }
 
-      // 3.1. Command: /profit_op1 or button "💰 Валовая прибыль ОП1"
-      if (normalizedText === '/profit_op1' || normalizedText === '💰 валовая прибыль оп1' || normalizedText.includes('прибыль оп1')) {
-        logger.info(`User ${chatId} requested OP1 gross profit.`);
-
-        await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к таблице ОП1 и рассчитываю прибыль...');
-
-        try {
-          const reportService = require('./report.service');
-          const profitText = await reportService.getGrossProfitOP1();
-          await this.sendMessage(chatId, profitText);
-          logger.info(`OP1 gross profit response successfully sent to chat ID: ${chatId}`);
-        } catch (innerError) {
-          logger.error(`Failed to generate OP1 profit response: ${innerError.message}`);
-          await this.sendMessage(
-            chatId, 
-            `⚠️ Ошибка при расчете прибыли ОП1:\n${innerError.message}\n\n` +
-            `Пожалуйста, убедитесь, что Google Apps Script Web App для ОП1 опубликован и доступен по адресу APPS_SCRIPT_URL_OP1.`
-          );
-        }
+      // 3.1. Command: /profit_op1 or button "💰 Валовая прибыль ОП1" -> Opens Date Submenu
+      if (normalizedText === '💰 валовая прибыль оп1' || normalizedText === '/profit_op1' || normalizedText === 'прибыль оп1') {
+        this.userStates.set(chatId, { mode: 'PROFIT_OP1' });
+        logger.info(`User ${chatId} opened date menu for Gross Profit OP1.`);
+        const dateMarkup = this.buildMonthDaysKeyboard();
+        const msgText = 
+          `💰 *Валовая прибыль ОП1 — Выбор даты*\n\n` +
+          `Выберите интересующий день текущего месяца с помощью кнопок ниже или нажмите «⚡ За сегодня»:`;
+        await this.sendMessage(chatId, msgText, dateMarkup, 'Markdown');
         return;
       }
 
       // 3.2. Command: /call_report or button "📞 Отчет по звонкам"
       if (normalizedText === '/call_report' || normalizedText === '📞 отчет по звонкам' || normalizedText.includes('отчет по звонкам')) {
+        this.userStates.delete(chatId);
         logger.info(`User ${chatId} requested an instant call report.`);
-        
         await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к Binotel и формирую отчет по звонкам...');
-        
         try {
           const reportService = require('./report.service');
           const reportText = await reportService.getCallReportText();
@@ -262,10 +309,9 @@ class TelegramService {
 
       // 3.3. Command: /amo_report or button "📊 Отчет по amoCRM"
       if (normalizedText === '/amo_report' || normalizedText === '📊 отчет по amocrm' || normalizedText.includes('отчет по amo')) {
+        this.userStates.delete(chatId);
         logger.info(`User ${chatId} requested an instant amoCRM report.`);
-        
         await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к amoCRM и формирую отчет по работе менеджеров...');
-        
         try {
           const reportService = require('./report.service');
           const reportText = await reportService.getAmoReportText();
@@ -284,6 +330,7 @@ class TelegramService {
 
       // 3.4. Command: /rnp or button "📋 Отчеты РНП"
       if (normalizedText === '/rnp' || normalizedText === '📋 отчеты рнп' || normalizedText === 'отчеты рнп') {
+        this.userStates.delete(chatId);
         logger.info(`User ${chatId} opened RNP submenu.`);
         const rnpWelcomeText = 
           `📋 *Отчетность РНП по менеджерам*\n\n` +
@@ -305,6 +352,7 @@ class TelegramService {
 
       // 3.5. Command: button "📋 Проверить отчетность"
       if (normalizedText === '📋 проверить отчетность' || normalizedText.includes('проверить отчетность')) {
+        this.userStates.delete(chatId);
         logger.info(`User ${chatId} requested RNP reporting status.`);
         await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к онлайн-таблице и формирую отчет по отчетности РНП...');
         try {
@@ -321,6 +369,7 @@ class TelegramService {
 
       // 3.6. Command: button "❌ Кто не заполнял РНП"
       if (normalizedText === '❌ кто не заполнял рнп' || normalizedText.includes('кто не заполнял рнп') || normalizedText.includes('кто в какие дни не заполнял')) {
+        this.userStates.delete(chatId);
         logger.info(`User ${chatId} requested RNP missed days.`);
         await this.sendMessage(chatId, '🔄 Секунду, подключаюсь к онлайн-таблице и рассчитываю пропуски РНП...');
         try {
@@ -335,28 +384,54 @@ class TelegramService {
         return;
       }
 
-      // 3.7. Command: button "⬅️ Назад в меню"
-      if (normalizedText === '⬅️ назад в меню' || normalizedText === 'назад в меню') {
-        const welcomeText = '👋 Возвращаю вас в главное меню отчетов продаж:';
-        const replyMarkup = {
-          keyboard: [
-            [{ text: '📊 Получить актуальный отчет' }, { text: '📋 Отчеты РНП' }],
-            [
-              { text: '💰 Валовая прибыль ОП2' },
-              { text: '💰 Валовая прибыль ОП1' }
-            ],
-            [
-              { text: '📞 Отчет по звонкам' },
-              { text: '📊 Отчет по amoCRM' }
-            ]
-          ],
-          resize_keyboard: true,
-          one_time_keyboard: false
-        };
-        await this.sendMessage(chatId, welcomeText, replyMarkup);
-        return;
+      // 3.7. Handle Date Selection for Active User Mode (REPORT, PROFIT_OP2, PROFIT_OP1)
+      const userState = this.userStates.get(chatId);
+      const targetDateStr = this.parseTargetDate(text);
+
+      if (userState && targetDateStr) {
+        const mode = userState.mode;
+        const reportService = require('./report.service');
+
+        if (mode === 'REPORT') {
+          logger.info(`User ${chatId} requested report for date: ${targetDateStr}`);
+          await this.sendMessage(chatId, `🔄 Секунду, подключаюсь к таблицам и формирую отчет за ${targetDateStr}...`);
+          try {
+            const reportText = await reportService.getReportText(targetDateStr);
+            await this.sendMessage(chatId, reportText);
+          } catch (innerError) {
+            logger.error(`Failed to generate report for date ${targetDateStr}: ${innerError.message}`);
+            await this.sendMessage(chatId, `⚠️ Ошибка при формировании отчета за ${targetDateStr}:\n${innerError.message}`);
+          }
+          return;
+        }
+
+        if (mode === 'PROFIT_OP2') {
+          logger.info(`User ${chatId} requested OP2 profit for date: ${targetDateStr}`);
+          await this.sendMessage(chatId, `🔄 Секунду, подключаюсь к таблицам и рассчитываю прибыль ОП2 за ${targetDateStr}...`);
+          try {
+            const profitText = await reportService.getGrossProfitText(targetDateStr);
+            await this.sendMessage(chatId, profitText);
+          } catch (innerError) {
+            logger.error(`Failed to generate OP2 profit for date ${targetDateStr}: ${innerError.message}`);
+            await this.sendMessage(chatId, `⚠️ Ошибка при расчете прибыли ОП2 за ${targetDateStr}:\n${innerError.message}`);
+          }
+          return;
+        }
+
+        if (mode === 'PROFIT_OP1') {
+          logger.info(`User ${chatId} requested OP1 profit for date: ${targetDateStr}`);
+          await this.sendMessage(chatId, `🔄 Секунду, подключаюсь к таблице ОП1 и рассчитываю прибыль за ${targetDateStr}...`);
+          try {
+            const profitText = await reportService.getGrossProfitOP1(targetDateStr);
+            await this.sendMessage(chatId, profitText);
+          } catch (innerError) {
+            logger.error(`Failed to generate OP1 profit for date ${targetDateStr}: ${innerError.message}`);
+            await this.sendMessage(chatId, `⚠️ Ошибка при расчете прибыли ОП1 за ${targetDateStr}:\n${innerError.message}`);
+          }
+          return;
+        }
       }
-  
+
       // 4. Fallback for other text inputs
       const fallbackText = 
         `💡 Я понимаю только специальные команды.\n\n` +
@@ -376,3 +451,4 @@ class TelegramService {
 }
 
 module.exports = new TelegramService();
+
