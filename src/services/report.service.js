@@ -222,12 +222,100 @@ class ReportService {
         order: 6,
         type: 'standard'
       },
+      'Гостевой': {
+        name: 'Гостевой',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 7,
+        type: 'standard'
+      },
+      'Обучение на фитнес тренера': {
+        name: 'Обучение на фитнес тренера',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 8,
+        type: 'standard'
+      },
+      'Таргет': {
+        name: 'Таргет',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 9,
+        type: 'standard'
+      },
+      '2ГИС': {
+        name: '2ГИС',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 10,
+        type: 'standard'
+      },
+      'Прямой переход': {
+        name: 'Прямой переход',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 11,
+        type: 'standard'
+      },
+      'Флоктори': {
+        name: 'Флоктори',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 12,
+        type: 'standard'
+      },
+      'Самообращение': {
+        name: 'Самообращение',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 13,
+        type: 'standard'
+      },
+      'Тильда': {
+        name: 'Тильда',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 14,
+        type: 'standard'
+      },
+      'Таплинк': {
+        name: 'Таплинк',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 15,
+        type: 'standard'
+      },
+      'ВП таргет': {
+        name: 'ВП таргет',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 16,
+        type: 'standard'
+      },
+      'Другое': {
+        name: 'Другое',
+        gross: 0,
+        sales: 0,
+        avgCheck: 0,
+        order: 17,
+        type: 'standard'
+      },
       'Отмены': {
         name: 'Отмены',
         gross: 0,
         sales: 0,
         avgCheck: 0,
-        order: 7,
+        order: 99,
         type: 'standard'
       }
     };
@@ -322,6 +410,42 @@ class ReportService {
             categoryKey = 'Форсировка';
           } else if (leadSource.includes('доплат') || leadSource.includes('предоплат')) {
             categoryKey = 'Доплата / Предоплата';
+          } else if (leadSource.includes('гостевой')) {
+            categoryKey = 'Гостевой';
+          } else if (leadSource.includes('тренер') || leadSource.includes('обучение')) {
+            categoryKey = 'Обучение на фитнес тренера';
+          } else if (leadSource.includes('вп таргет') || leadSource.includes('вптаргет')) {
+            categoryKey = 'ВП таргет';
+          } else if (leadSource.includes('таргет')) {
+            categoryKey = 'Таргет';
+          } else if (leadSource.includes('2гис') || leadSource.includes('2gis')) {
+            categoryKey = '2ГИС';
+          } else if (leadSource.includes('прямой')) {
+            categoryKey = 'Прямой переход';
+          } else if (leadSource.includes('флок')) { // Handles "флоктори", "флоктари", etc.
+            categoryKey = 'Флоктори';
+          } else if (leadSource.includes('самообращение')) {
+            categoryKey = 'Самообращение';
+          } else if (leadSource.includes('тильда') || leadSource.includes('tilda')) {
+            categoryKey = 'Тильда';
+          } else if (leadSource.includes('таплинк') || leadSource.includes('taplink')) {
+            categoryKey = 'Таплинк';
+          } else if (leadSource.includes('другое') || leadSource.includes('примечани')) {
+            categoryKey = 'Другое';
+          } else if (leadSourceRaw && leadSourceRaw.trim()) {
+            // Dynamic fallback for any unhandled new channel name from table
+            const rawTitle = leadSourceRaw.trim();
+            if (!categories[rawTitle]) {
+              categories[rawTitle] = {
+                name: rawTitle,
+                gross: 0,
+                sales: 0,
+                avgCheck: 0,
+                order: 80,
+                type: 'standard'
+              };
+            }
+            categoryKey = rawTitle;
           }
         }
 
