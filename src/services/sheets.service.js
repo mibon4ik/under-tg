@@ -4,20 +4,38 @@ const logger = require('../utils/logger');
 
 /**
  * Service to connect and fetch data from Google Sheets via the Apps Script Web App.
+ * Includes in-memory caching to make repeated requests super fast.
  */
 class SheetsService {
+  constructor() {
+    this.cache = new Map(); // key -> { timestamp, data }
+    this.CACHE_TTL_MS = 30 * 1000; // 30 seconds cache TTL
+  }
+
   /**
    * Fetches data from sheets dynamically resolved via the Apps Script Web App.
-   * Retries up to 3 times with exponential backoff on failure.
-   * THROWS an error if all attempts fail — the caller must handle it.
+   * Uses fast 30-second caching, 10s HTTP timeouts, and 500ms retries.
    * @param {string} targetDateStr - Target date in format "dd.MM.yyyy"
+   * @param {boolean} forceRefresh - If true, bypasses the cache
    * @returns {Promise<Object>} An object mapping sheetName -> 2D array of raw row data.
    */
-  async fetchSheetsData(targetDateStr) {
+  async fetchSheetsData(targetDateStr, forceRefresh = false) {
     const webAppUrl = config.APPS_SCRIPT_URL;
 
     if (!webAppUrl) {
       throw new Error('Google Apps Script Web App URL (APPS_SCRIPT_URL) is not configured.');
+    }
+
+    const cacheKey = `${targetDateStr}_${config.SHEET_PROD || ''}_${config.SHEET_OTMEN || ''}`;
+    const now = Date.now();
+
+    // Check cache first for fast response
+    if (!forceRefresh && this.cache.has(cacheKey)) {
+      const cached = this.cache.get(cacheKey);
+      if (now - cached.timestamp < this.CACHE_TTL_MS) {
+        logger.info(`⚡ Returning cached spreadsheet data for date ${targetDateStr} (Age: ${Math.round((now - cached.timestamp) / 1000)}s)`);
+        return cached.data;
+      }
     }
 
     const MAX_RETRIES = 3;
@@ -33,33 +51,36 @@ class SheetsService {
             sheetProd: config.SHEET_PROD || '',
             sheetOtmen: config.SHEET_OTMEN || ''
           },
-          timeout: 30000 // 30s timeout for Google Apps Script execution limits
+          timeout: 10000 // Fast 10s timeout per attempt
         });
 
         if (response.data && response.data.ok) {
           const data = response.data.data;
 
-          // Validate that the response actually contains sheet data with rows
+          // Validate that the response contains sheet data with rows
           if (!data || typeof data !== 'object' || Object.keys(data).length === 0) {
-            throw new Error('Apps Script returned ok=true but the data object is empty or missing.');
+            throw new Error('Apps Script returned ok=true but data object is empty.');
           }
 
-          // Check if at least one sheet has actual rows (more than just headers)
           let hasRows = false;
           for (const [sheetName, rows] of Object.entries(data)) {
             if (Array.isArray(rows) && rows.length > 1) {
               hasRows = true;
-              logger.info(`  Sheet "${sheetName}": ${rows.length} rows (including header)`);
+              logger.info(`  Sheet "${sheetName}": ${rows.length} rows`);
             } else {
               logger.warn(`  Sheet "${sheetName}": empty or header-only (${Array.isArray(rows) ? rows.length : 0} rows)`);
             }
           }
 
           if (!hasRows) {
-            logger.warn('All sheets returned are empty or header-only. Data may be genuinely empty for this date.');
+            logger.warn('All sheets returned are empty or header-only for this date.');
           }
 
           logger.info(`Spreadsheet data successfully fetched on attempt ${attempt}.`);
+          
+          // Save to cache
+          this.cache.set(cacheKey, { timestamp: now, data });
+
           return data;
         } else {
           const errMsg = response.data ? response.data.error : 'unknown error';
@@ -70,7 +91,7 @@ class SheetsService {
         const isLastAttempt = attempt === MAX_RETRIES;
 
         if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
-          logger.error(`[Attempt ${attempt}/${MAX_RETRIES}] Request timed out: ${error.message}`);
+          logger.error(`[Attempt ${attempt}/${MAX_RETRIES}] Request timed out (10s limit exceeded)`);
         } else if (error.response) {
           logger.error(`[Attempt ${attempt}/${MAX_RETRIES}] HTTP ${error.response.status}: ${error.message}`);
         } else {
@@ -78,15 +99,21 @@ class SheetsService {
         }
 
         if (!isLastAttempt) {
-          const delay = attempt * 2000; // 2s, 4s backoff
-          logger.info(`Retrying in ${delay / 1000}s...`);
+          const delay = 500; // Fast 500ms retry delay
+          logger.info(`Fast retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
       }
     }
 
-    // All retries exhausted — throw to prevent zero-report
-    throw new Error(`Failed to fetch spreadsheet data after ${MAX_RETRIES} attempts. Last error: ${lastError?.message || 'unknown'}`);
+    // All retries failed — fallback to expired cache if available before throwing error
+    if (this.cache.has(cacheKey)) {
+      const cached = this.cache.get(cacheKey);
+      logger.warn(`⚠️ Network fetch failed. Serving fallback cached data from ${Math.round((now - cached.timestamp) / 1000)}s ago.`);
+      return cached.data;
+    }
+
+    throw new Error(`Не удалось получить данные из таблицы после 3 попыток. Сбой сети или Google Apps Script не отвечает. (Ошибка: ${lastError?.message || 'timeout'})`);
   }
 }
 
