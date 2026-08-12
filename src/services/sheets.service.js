@@ -22,6 +22,15 @@ class SheetsService {
   }
 
   /**
+   * Clears all cached spreadsheet data or a specific cache key.
+   * Useful when Google Apps Script or an external trigger notifies about new sales.
+   */
+  clearCache() {
+    this.cache.clear();
+    logger.info('🧹 Spreadsheet in-memory cache successfully cleared.');
+  }
+
+  /**
    * Background task to keep today's sheet data pre-warmed in memory.
    */
   async backgroundWarming() {

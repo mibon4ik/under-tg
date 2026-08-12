@@ -253,6 +253,25 @@ app.post('/api/test-sheets', authMiddleware, async (req, res) => {
 });
 
 /**
+ * Webhook endpoint triggered by Google Apps Script on new row insertion.
+ * Instantly clears cache and triggers background re-fetch so memory is pre-warmed with latest data.
+ * GET/POST /api/webhooks/refresh-cache
+ */
+app.all('/api/webhooks/refresh-cache', async (req, res) => {
+  try {
+    const sheetsService = require('./services/sheets.service');
+    sheetsService.clearCache();
+    // Fire and forget background warming
+    sheetsService.backgroundWarming().catch(() => {});
+    res.json({ success: true, message: 'Cache cleared and background warming triggered.' });
+  } catch (err) {
+    logger.error('Error handling refresh-cache webhook:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+/**
  * Fetch available sheets list (tabs) dynamically from Google Spreadsheet Apps Script
  * POST /api/fetch-sheets-list
  */
