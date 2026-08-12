@@ -19,9 +19,29 @@ class ReportService {
       const dateToProcess = targetDateStr || formatter.formatDate(new Date());
       logger.info(`Running sales report generation for date: ${dateToProcess}`);
 
-      // 2. Fetch data from Google Sheets
-      const rawData = await sheetsService.fetchSheetsData(dateToProcess);
-      
+      // 2. Fetch data from Google Sheets (throws on failure after retries)
+      let rawData;
+      try {
+        rawData = await sheetsService.fetchSheetsData(dateToProcess);
+      } catch (fetchError) {
+        // Data fetching completely failed — do NOT send a zero report
+        logger.error(`❌ Data fetch failed for date ${dateToProcess}: ${fetchError.message}`);
+        
+        const errorNotification = `⚠️ ОШИБКА ПОЛУЧЕНИЯ ДАННЫХ\n\n` +
+          `Дата: ${dateToProcess}\n` +
+          `Не удалось получить данные из Google Sheets.\n` +
+          `Причина: ${fetchError.message}\n\n` +
+          `Отчёт НЕ отправлен. Проверьте подключение к таблице.`;
+        
+        await telegramService.sendReport(errorNotification);
+        
+        return {
+          success: false,
+          error: fetchError.message,
+          text: errorNotification
+        };
+      }
+
       // 3. Process and aggregate data
       const reportData = this.aggregateData(rawData, dateToProcess);
 
@@ -32,13 +52,11 @@ class ReportService {
       logger.info('------------------------');
 
       // 5. Send report to Telegram
-      let telegramResults = null;
-      if (reportData.totalSalesCount > 0 || reportData.totalDvdCount > 0 || reportData.totalGross > 0) {
-        telegramResults = await telegramService.sendReport(reportText);
-      } else {
-        logger.warn(`No active sales or data found for date ${dateToProcess}. Report sent with zero-state.`);
-        telegramResults = await telegramService.sendReport(reportText);
+      if (reportData.totalSalesCount === 0 && reportData.totalDvdCount === 0 && reportData.totalGross === 0) {
+        logger.warn(`No sales data found for date ${dateToProcess}. Data was fetched successfully but is empty for this date.`);
       }
+      
+      const telegramResults = await telegramService.sendReport(reportText);
 
       return {
         success: true,
@@ -63,9 +81,14 @@ class ReportService {
    */
   async getReportText(targetDateStr = null) {
     const dateToProcess = targetDateStr || formatter.formatDate(new Date());
-    const rawData = await sheetsService.fetchSheetsData(dateToProcess);
-    const reportData = this.aggregateData(rawData, dateToProcess);
-    return this.buildReportMessage(reportData, dateToProcess);
+    try {
+      const rawData = await sheetsService.fetchSheetsData(dateToProcess);
+      const reportData = this.aggregateData(rawData, dateToProcess);
+      return this.buildReportMessage(reportData, dateToProcess);
+    } catch (error) {
+      logger.error(`Failed to get report text for ${dateToProcess}: ${error.message}`);
+      return `⚠️ Не удалось получить данные из таблицы для даты ${dateToProcess}.\nПричина: ${error.message}\n\nПопробуйте ещё раз через минуту.`;
+    }
   }
 
   /**
@@ -76,7 +99,13 @@ class ReportService {
    */
   async getGrossProfitText(targetDateStr = null) {
     const dateToProcess = targetDateStr || formatter.formatDate(new Date());
-    const rawData = await sheetsService.fetchSheetsData(dateToProcess);
+    let rawData;
+    try {
+      rawData = await sheetsService.fetchSheetsData(dateToProcess);
+    } catch (error) {
+      logger.error(`Failed to get gross profit data for ${dateToProcess}: ${error.message}`);
+      return `⚠️ Не удалось получить данные из таблицы для даты ${dateToProcess}.\nПричина: ${error.message}\n\nПопробуйте ещё раз через минуту.`;
+    }
     const reportData = this.aggregateData(rawData, dateToProcess);
 
     // Calculate renewals totals (everything except 'Отмены')
