@@ -158,7 +158,7 @@ class TelegramService {
       payload.parse_mode = parseMode;
     }
 
-    const response = await axios.post(url, payload);
+    const response = await axios.post(url, payload, { timeout: 15000 });
     return response.data;
   }
 
@@ -189,13 +189,22 @@ class TelegramService {
             timeout: 30000 // 30s connection timeout
           });
 
-          const updates = response.data.result || [];
+          const updates = (response.data && response.data.ok && response.data.result) || [];
           for (const update of updates) {
             offset = update.update_id + 1;
-            await this.handleUpdate(update);
+            try {
+              await this.handleUpdate(update);
+            } catch (updateError) {
+              // Never let a single bad update kill the polling loop
+              logger.error(`Error processing update ${update.update_id}: ${updateError.message}`);
+            }
           }
         } catch (error) {
-          logger.error(`Error in Telegram polling listener: ${error.message}`);
+          if (error.response && error.response.status === 409) {
+            logger.error('Telegram getUpdates conflict (409): another instance/webhook is active. Retrying in 5s...');
+          } else {
+            logger.error(`Error in Telegram polling listener: ${error.message}`);
+          }
           // Wait 5 seconds before retrying on network drops to prevent spamming
           await new Promise(resolve => setTimeout(resolve, 5000));
         }

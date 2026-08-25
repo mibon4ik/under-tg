@@ -4,6 +4,15 @@ const schedulerService = require('./services/scheduler.service');
 const telegramService = require('./services/telegram.service');
 const logger = require('./utils/logger');
 
+// Log instead of crashing on an unhandled rejection/exception — a crashed process
+// means the bot stops responding entirely until Railway restarts it.
+process.on('unhandledRejection', (reason) => {
+  logger.error(`Unhandled promise rejection: ${reason && reason.message ? reason.message : reason}`);
+});
+process.on('uncaughtException', (err) => {
+  logger.error(`Uncaught exception: ${err.message}`);
+});
+
 async function startServer() {
   // 1. Wait for PostgreSQL settings initialization
   try {

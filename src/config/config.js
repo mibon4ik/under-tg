@@ -24,7 +24,7 @@ let currentConfig = {
   TELEGRAM: {
     BOT_TOKEN: process.env.BOT_TOKEN || '',
     CHAT_IDS: parseChatIds(process.env.CHAT_ID || ''),
-    MODE: process.env.TELEGRAM_MODE || 'webhook',
+    MODE: process.env.TELEGRAM_MODE || 'polling',
   },
   APPS_SCRIPT_URL: process.env.APPS_SCRIPT_URL || '',
   APPS_SCRIPT_URL_OP1: process.env.APPS_SCRIPT_URL_OP1 || '',
@@ -163,8 +163,10 @@ function loadLocalSettings() {
   }
 }
 
-// Trigger initialization immediately
-initDb();
+// Note: initDb() is intentionally NOT auto-invoked here. server.js awaits it once
+// during startup. Calling it a second time at module load raced with that call and
+// could double-insert the default admin user, causing auth.service to fail over to
+// local-file auth for the rest of the process lifetime.
 
 module.exports = {
   get dbPool() { return dbPool; },
