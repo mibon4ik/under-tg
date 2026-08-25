@@ -839,3 +839,24 @@ function getRnpMissedDaysText_(ss, targetDate, sheetRnp) {
   text += '_Примечание: Пропущенные дни указаны в скобках в формате (день.месяц)._';
   return text;
 }
+
+/**
+ * -----------------------------------------------------------------------------
+ *  4. REAL-TIME WEBHOOK TRIGGER (onChangeTrigger)
+ *  Notifies Node.js Railway backend when sales or cells are added/edited
+ * -----------------------------------------------------------------------------
+ */
+function onChangeTrigger(e) {
+  // Замените на реальный URL вашего бота на Railway
+  var botWebhookUrl = "https://under-tg-production.up.railway.app/api/webhooks/refresh-cache";
+  
+  try {
+    UrlFetchApp.fetch(botWebhookUrl, { 
+      method: "post", 
+      muteHttpExceptions: true 
+    });
+  } catch (err) {
+    Logger.log("Webhook refresh error: " + err);
+  }
+}
+
