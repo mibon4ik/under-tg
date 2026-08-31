@@ -3,6 +3,8 @@ const config = require('../config/config');
 const reportService = require('./report.service');
 const logger = require('../utils/logger');
 
+const formatter = require('../utils/formatter');
+
 /**
  * Service to manage background automated report generation using node-cron.
  */
@@ -16,7 +18,7 @@ class SchedulerService {
    * Initializes and starts the cron jobs.
    */
   start() {
-    const timezone = config.TIMEZONE;
+    const timezone = formatter.normalizeTimezone(config.TIMEZONE);
 
     // 1. Schedule daily sales report
     const salesTime = config.SALES_REPORT_TIME || '21:00';

@@ -17,10 +17,11 @@ class TelegramService {
   buildMonthDaysKeyboard() {
     const formatter = require('../utils/formatter');
     const now = new Date();
-    const currentDateStr = formatter.formatDate(now); // e.g. "11.08.2026"
+    const currentDateStr = formatter.formatDate(now); // e.g. "31.08.2026" (Astana UTC+5)
     const [currDay, currMonth, currYear] = currentDateStr.split('.');
     
-    const daysInMonth = new Date(parseInt(currYear, 10), parseInt(currMonth, 10), 0).getDate();
+    // Dynamically calculate the exact number of days in the month (e.g. 31 for Jan, Mar, May, Jul, Aug, Oct, Dec)
+    const daysInMonth = formatter.getDaysInMonth(currYear, currMonth);
     
     const keyboard = [
       [{ text: `⚡ За сегодня (${currentDateStr})` }]
@@ -48,7 +49,7 @@ class TelegramService {
   }
 
   /**
-   * Tries to parse a target date from user input text (e.g. "5 число", "5", "05.08.2026").
+   * Tries to parse a target date from user input text (e.g. "5 число", "5", "31 число", "05.08.2026").
    * @param {string} text 
    * @returns {string|null} Formatted date "dd.MM.yyyy" or null.
    */
@@ -57,6 +58,7 @@ class TelegramService {
     const now = new Date();
     const currentDateStr = formatter.formatDate(now);
     const [, currMonth, currYear] = currentDateStr.split('.');
+    const daysInMonth = formatter.getDaysInMonth(currYear, currMonth);
 
     const normalized = text.trim().toLowerCase();
 
@@ -82,11 +84,11 @@ class TelegramService {
       return `${d}.${m}.${currYear}`;
     }
 
-    // 4. Day number format "5 число", "5", "05"
+    // 4. Day number format "5 число", "5", "05", "31 число"
     const dayMatch = normalized.match(/^(\d{1,2})\s*(число|числа|день)?$/i);
     if (dayMatch) {
       const dayNum = parseInt(dayMatch[1], 10);
-      if (dayNum >= 1 && dayNum <= 31) {
+      if (dayNum >= 1 && dayNum <= daysInMonth) {
         const d = String(dayNum).padStart(2, '0');
         return `${d}.${currMonth}.${currYear}`;
       }

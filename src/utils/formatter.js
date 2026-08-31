@@ -27,16 +27,69 @@ function formatCurrency(num) {
 }
 
 /**
+ * Normalizes timezone string to ensure valid IANA identifier for Astana/Kazakhstan (UTC+5).
+ * Node.js and node-cron require 'Asia/Almaty' for Kazakhstan UTC+5.
+ * @param {string} tz - Timezone string.
+ * @returns {string} Normalized IANA timezone identifier.
+ */
+function normalizeTimezone(tz) {
+  if (!tz || typeof tz !== 'string') {
+    return 'Asia/Almaty';
+  }
+  const clean = tz.trim();
+  const lower = clean.toLowerCase();
+  
+  if (
+    lower === 'asia/astana' ||
+    lower === 'astana' ||
+    lower === 'астана' ||
+    lower === 'kazakhstan' ||
+    lower === 'казахстан' ||
+    lower === 'utc+5' ||
+    lower === 'gmt+5' ||
+    lower === 'utc+05:00' ||
+    lower === '+05:00' ||
+    lower === '+05' ||
+    lower === 'asia/almaty' ||
+    lower === 'almaty'
+  ) {
+    return 'Asia/Almaty';
+  }
+
+  // Validate if Intl supports the provided timezone
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: clean });
+    return clean;
+  } catch (e) {
+    return 'Asia/Almaty';
+  }
+}
+
+/**
+ * Calculates total number of days in a specific month and year.
+ * @param {number|string} year - 4-digit year (e.g. 2026).
+ * @param {number|string} month - 1-based month (1 = Jan, ..., 12 = Dec).
+ * @returns {number} Number of days in the month (28, 29, 30, or 31).
+ */
+function getDaysInMonth(year, month) {
+  const y = parseInt(year, 10);
+  const m = parseInt(month, 10);
+  // Using Date.UTC(y, m, 0) returns the 0th day of the NEXT month (which is the last day of month m)
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+/**
  * Formats a Date object or date-string into "dd.MM.yyyy" string in the configured timezone.
  * @param {Date|string|number} date - The date to format.
- * @param {string} [timezone] - Target timezone (defaults to config TIMEZONE).
+ * @param {string} [timezone] - Target timezone (defaults to config TIMEZONE / Asia/Almaty).
  * @returns {string} The formatted date string (e.g. "26.05.2026").
  */
 function formatDate(date, timezone = config.TIMEZONE) {
   const d = date ? new Date(date) : new Date();
+  const effectiveTz = normalizeTimezone(timezone);
   try {
     return new Intl.DateTimeFormat('ru-RU', {
-      timeZone: timezone,
+      timeZone: effectiveTz,
       day: '2-digit',
       month: '2-digit',
       year: 'numeric'
@@ -53,4 +106,6 @@ function formatDate(date, timezone = config.TIMEZONE) {
 module.exports = {
   formatCurrency,
   formatDate,
+  getDaysInMonth,
+  normalizeTimezone,
 };

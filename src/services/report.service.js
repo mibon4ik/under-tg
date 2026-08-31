@@ -678,8 +678,9 @@ class ReportService {
       
       const getTimestampForLocalTime = (y, m, d, h, min, sec, tz) => {
         let guess = Date.UTC(y, m - 1, d, h, min, sec);
+        const effectiveTz = formatter.normalizeTimezone(tz || config.TIMEZONE);
         const formatterInstance = new Intl.DateTimeFormat('en-US', {
-          timeZone: tz,
+          timeZone: effectiveTz,
           year: 'numeric',
           month: 'numeric',
           day: 'numeric',
@@ -848,8 +849,9 @@ class ReportService {
       
       const getTimestampForLocalTime = (y, m, d, h, min, sec, tz) => {
         let guess = Date.UTC(y, m - 1, d, h, min, sec);
+        const effectiveTz = formatter.normalizeTimezone(tz || config.TIMEZONE);
         const formatterInstance = new Intl.DateTimeFormat('en-US', {
-          timeZone: tz,
+          timeZone: effectiveTz,
           year: 'numeric',
           month: 'numeric',
           day: 'numeric',

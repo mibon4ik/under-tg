@@ -2,11 +2,18 @@
  * Logger utility providing formatted console logs with timestamps.
  */
 function getTimestamp() {
-  const tz = process.env.TIMEZONE || 'Asia/Almaty';
+  let tz = process.env.TIMEZONE || 'Asia/Almaty';
+  if (/astana|kazakhstan|казахстан|астана|utc\+5|gmt\+5/i.test(tz)) {
+    tz = 'Asia/Almaty';
+  }
   try {
     return new Date().toLocaleString('ru-RU', { timeZone: tz });
   } catch (error) {
-    return new Date().toISOString();
+    try {
+      return new Date().toLocaleString('ru-RU', { timeZone: 'Asia/Almaty' });
+    } catch (e) {
+      return new Date().toISOString();
+    }
   }
 }
 

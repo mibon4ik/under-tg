@@ -8,6 +8,29 @@ dotenv.config();
 
 const settingsFilePath = path.join(__dirname, 'settings.json');
 
+// Helper to normalize timezone to valid IANA identifier
+function normalizeTz(tz) {
+  if (!tz || typeof tz !== 'string') return 'Asia/Almaty';
+  const lower = tz.trim().toLowerCase();
+  if (
+    lower === 'asia/astana' ||
+    lower === 'astana' ||
+    lower === 'астана' ||
+    lower === 'kazakhstan' ||
+    lower === 'казахстан' ||
+    lower === 'utc+5' ||
+    lower === 'gmt+5' ||
+    lower === 'utc+05:00' ||
+    lower === '+05:00' ||
+    lower === '+05' ||
+    lower === 'asia/almaty' ||
+    lower === 'almaty'
+  ) {
+    return 'Asia/Almaty';
+  }
+  return tz.trim();
+}
+
 // Helper to parse multiple Chat IDs
 function parseChatIds(chatIdStr) {
   if (!chatIdStr) return [];
@@ -20,7 +43,7 @@ function parseChatIds(chatIdStr) {
 // In-memory configuration defaults
 let currentConfig = {
   PORT: process.env.PORT || 3000,
-  TIMEZONE: process.env.TIMEZONE || 'Asia/Almaty',
+  TIMEZONE: normalizeTz(process.env.TIMEZONE || 'Asia/Almaty'),
   TELEGRAM: {
     BOT_TOKEN: process.env.BOT_TOKEN || '',
     CHAT_IDS: parseChatIds(process.env.CHAT_ID || ''),
@@ -90,7 +113,7 @@ async function initDb() {
       console.log('[DB] Loaded settings from database.');
 
       // 3. Map database settings to in-memory config
-      if (dbSettings.TIMEZONE) currentConfig.TIMEZONE = dbSettings.TIMEZONE;
+      if (dbSettings.TIMEZONE) currentConfig.TIMEZONE = normalizeTz(dbSettings.TIMEZONE);
       if (dbSettings.BOT_TOKEN) currentConfig.TELEGRAM.BOT_TOKEN = dbSettings.BOT_TOKEN;
       if (dbSettings.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(dbSettings.CHAT_ID);
       if (dbSettings.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = dbSettings.APPS_SCRIPT_URL;
@@ -132,7 +155,7 @@ function loadLocalSettings() {
   try {
     if (fs.existsSync(settingsFilePath)) {
       const saved = JSON.parse(fs.readFileSync(settingsFilePath, 'utf8'));
-      if (saved.TIMEZONE) currentConfig.TIMEZONE = saved.TIMEZONE;
+      if (saved.TIMEZONE) currentConfig.TIMEZONE = normalizeTz(saved.TIMEZONE);
       if (saved.BOT_TOKEN) currentConfig.TELEGRAM.BOT_TOKEN = saved.BOT_TOKEN;
       if (saved.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(saved.CHAT_ID);
       if (saved.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = saved.APPS_SCRIPT_URL;
@@ -204,7 +227,7 @@ module.exports = {
   async saveSettings(newSettings) {
     try {
       // 1. Update local config in memory
-      if (newSettings.TIMEZONE) currentConfig.TIMEZONE = newSettings.TIMEZONE;
+      if (newSettings.TIMEZONE) currentConfig.TIMEZONE = normalizeTz(newSettings.TIMEZONE);
       if (newSettings.BOT_TOKEN) currentConfig.TELEGRAM.BOT_TOKEN = newSettings.BOT_TOKEN;
       if (newSettings.CHAT_ID) currentConfig.TELEGRAM.CHAT_IDS = parseChatIds(newSettings.CHAT_ID);
       if (newSettings.APPS_SCRIPT_URL) currentConfig.APPS_SCRIPT_URL = newSettings.APPS_SCRIPT_URL;
