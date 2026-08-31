@@ -11,20 +11,38 @@ class TelegramService {
   }
 
   /**
+  /**
    * Generates a Reply Keyboard containing buttons for all days of the current month.
+   * @param {string} [mode] - Active mode: 'REPORT' | 'PROFIT_OP2' | 'PROFIT_OP1'
    * @returns {Object} Telegram reply_markup object.
    */
-  buildMonthDaysKeyboard() {
+  buildMonthDaysKeyboard(mode = 'REPORT') {
     const formatter = require('../utils/formatter');
     const now = new Date();
     const currentDateStr = formatter.formatDate(now); // e.g. "31.08.2026" (Astana UTC+5)
-    const [currDay, currMonth, currYear] = currentDateStr.split('.');
+    const [currDay, currMonth, currYear] = currentDateStr.split('.').map(Number);
     
+    // Calculate yesterday in Astana timezone
+    const yesterdayObj = new Date(Date.UTC(currYear, currMonth - 1, currDay - 1, 12, 0, 0));
+    const yesterdayDateStr = formatter.formatDate(yesterdayObj);
+
     // Dynamically calculate the exact number of days in the month (e.g. 31 for Jan, Mar, May, Jul, Aug, Oct, Dec)
     const daysInMonth = formatter.getDaysInMonth(currYear, currMonth);
     
+    const isProfit = mode === 'PROFIT_OP2' || mode === 'PROFIT_OP1';
+
+    const headerRow = isProfit
+      ? [
+          { text: `⚡ Вал за сегодня (${currentDateStr})` },
+          { text: `⚡ Вал за вчера (${yesterdayDateStr})` }
+        ]
+      : [
+          { text: `⚡ За сегодня (${currentDateStr})` },
+          { text: `⚡ За вчера (${yesterdayDateStr})` }
+        ];
+
     const keyboard = [
-      [{ text: `⚡ За сегодня (${currentDateStr})` }]
+      headerRow
     ];
     
     let row = [];
@@ -49,7 +67,7 @@ class TelegramService {
   }
 
   /**
-   * Tries to parse a target date from user input text (e.g. "5 число", "5", "31 число", "05.08.2026").
+   * Tries to parse a target date from user input text (e.g. "5 число", "5", "31 число", "05.08.2026", "вчера", "вал за вчера").
    * @param {string} text 
    * @returns {string|null} Formatted date "dd.MM.yyyy" or null.
    */
@@ -57,17 +75,24 @@ class TelegramService {
     const formatter = require('../utils/formatter');
     const now = new Date();
     const currentDateStr = formatter.formatDate(now);
-    const [, currMonth, currYear] = currentDateStr.split('.');
+    const [currDay, currMonth, currYear] = currentDateStr.split('.').map(Number);
+    const yesterdayObj = new Date(Date.UTC(currYear, currMonth - 1, currDay - 1, 12, 0, 0));
+    const yesterdayDateStr = formatter.formatDate(yesterdayObj);
     const daysInMonth = formatter.getDaysInMonth(currYear, currMonth);
 
     const normalized = text.trim().toLowerCase();
 
-    // 1. "⚡ За сегодня (11.08.2026)" or "за сегодня" or "сегодня"
-    if (normalized.includes('за сегодня') || normalized === 'сегодня') {
+    // 1. "⚡ Вал за вчера (30.08.2026)" or "вал за вчера" or "за вчера" or "вчера"
+    if (normalized.includes('вчера')) {
+      return yesterdayDateStr;
+    }
+
+    // 2. "⚡ Вал за сегодня (31.08.2026)" or "⚡ За сегодня (31.08.2026)" or "за сегодня" or "сегодня"
+    if (normalized.includes('сегодня')) {
       return currentDateStr;
     }
 
-    // 2. Full date format "dd.mm.yyyy" (e.g. "05.08.2026")
+    // 3. Full date format "dd.mm.yyyy" (e.g. "05.08.2026")
     const fullDateMatch = normalized.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
     if (fullDateMatch) {
       const d = String(fullDateMatch[1]).padStart(2, '0');
@@ -76,7 +101,7 @@ class TelegramService {
       return `${d}.${m}.${y}`;
     }
 
-    // 3. Short date format "dd.mm" (e.g. "05.08")
+    // 4. Short date format "dd.mm" (e.g. "05.08")
     const shortDateMatch = normalized.match(/^(\d{1,2})\.(\d{1,2})$/);
     if (shortDateMatch) {
       const d = String(shortDateMatch[1]).padStart(2, '0');
@@ -84,13 +109,14 @@ class TelegramService {
       return `${d}.${m}.${currYear}`;
     }
 
-    // 4. Day number format "5 число", "5", "05", "31 число"
+    // 5. Day number format "5 число", "5", "05", "31 число"
     const dayMatch = normalized.match(/^(\d{1,2})\s*(число|числа|день)?$/i);
     if (dayMatch) {
       const dayNum = parseInt(dayMatch[1], 10);
       if (dayNum >= 1 && dayNum <= daysInMonth) {
         const d = String(dayNum).padStart(2, '0');
-        return `${d}.${currMonth}.${currYear}`;
+        const m = String(currMonth).padStart(2, '0');
+        return `${d}.${m}.${currYear}`;
       }
     }
 
@@ -265,10 +291,10 @@ class TelegramService {
       if (normalizedText === '📊 получить актуальный отчет' || normalizedText === '/report' || normalizedText === 'получить отчет') {
         this.userStates.set(chatId, { mode: 'REPORT' });
         logger.info(`User ${chatId} opened date menu for Sales Report.`);
-        const dateMarkup = this.buildMonthDaysKeyboard();
+        const dateMarkup = this.buildMonthDaysKeyboard('REPORT');
         const msgText = 
           `📊 *Отчет продаж — Выбор даты*\n\n` +
-          `Выберите интересующий день текущего месяца с помощью кнопок ниже или нажмите «⚡ За сегодня»:`;
+          `Выберите интересующий день с помощью кнопок ниже или нажмите «⚡ За сегодня» / «⚡ За вчера»:`;
         await this.sendMessage(chatId, msgText, dateMarkup, 'Markdown');
         return;
       }
@@ -277,10 +303,10 @@ class TelegramService {
       if (normalizedText === '💰 валовая прибыль оп2' || normalizedText === '/profit' || normalizedText === 'прибыль оп2') {
         this.userStates.set(chatId, { mode: 'PROFIT_OP2' });
         logger.info(`User ${chatId} opened date menu for Gross Profit OP2.`);
-        const dateMarkup = this.buildMonthDaysKeyboard();
+        const dateMarkup = this.buildMonthDaysKeyboard('PROFIT_OP2');
         const msgText = 
           `💰 *Валовая прибыль ОП2 — Выбор даты*\n\n` +
-          `Выберите интересующий день текущего месяца с помощью кнопок ниже или нажмите «⚡ За сегодня»:`;
+          `Выберите интересующий день с помощью кнопок ниже или нажмите «⚡ Вал за сегодня» / «⚡ Вал за вчера»:`;
         await this.sendMessage(chatId, msgText, dateMarkup, 'Markdown');
         return;
       }
@@ -289,10 +315,10 @@ class TelegramService {
       if (normalizedText === '💰 валовая прибыль оп1' || normalizedText === '/profit_op1' || normalizedText === 'прибыль оп1') {
         this.userStates.set(chatId, { mode: 'PROFIT_OP1' });
         logger.info(`User ${chatId} opened date menu for Gross Profit OP1.`);
-        const dateMarkup = this.buildMonthDaysKeyboard();
+        const dateMarkup = this.buildMonthDaysKeyboard('PROFIT_OP1');
         const msgText = 
           `💰 *Валовая прибыль ОП1 — Выбор даты*\n\n` +
-          `Выберите интересующий день текущего месяца с помощью кнопок ниже или нажмите «⚡ За сегодня»:`;
+          `Выберите интересующий день с помощью кнопок ниже или нажмите «⚡ Вал за сегодня» / «⚡ Вал за вчера»:`;
         await this.sendMessage(chatId, msgText, dateMarkup, 'Markdown');
         return;
       }
